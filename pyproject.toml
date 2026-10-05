@@ -1,0 +1,11 @@
+# Configuración de herramientas para todo el repo. Cada paquete ROS tiene su propio setup.py.
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["build", "install", "log"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mobile_base", "vision", "recolector_interfaces"]

@@ -1,0 +1,29 @@
+# colcon
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+
+# Webots
+simulation/webots/**/.*.wbproj
+simulation/webots/**/*.wbt~
+
+# Editores y sistema
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Datos locales: fotos de calibración, rosbags, credenciales
+datos/
+*.db3
+*.mcap
+.env
