@@ -1,4 +1,31 @@
 # Parámetros del recolector (pines, velocidades, umbrales).
 # TODO: cada dueño agrega aquí los parámetros de sus nodos, con su unidad en el nombre.
-/**:
-  ros__parameters: {}
+
+behavior_fsm:
+  ros__parameters:
+    enabled: true
+    # colores que el robot busca (se cambian en caliente desde web_viewer)
+    target_colors: [rojo, naranja, amarillo]
+    # se detiene cuando el cubo está a esta distancia de la cámara. Con la geometría del
+    # PROTO, 0,17 m deja el cubo unos 5 cm delante de la punta de la pala. TODO medir.
+    stop_distance_m: 0.17
+    resume_margin_m: 0.04
+    slow_down_distance_m: 0.45
+    max_forward_m_s: 0.12        # el máximo del robot es ~0,24 m/s
+    min_forward_m_s: 0.03
+    turn_gain: 1.5               # rad/s por rad de error de ángulo
+    max_turn_rad_s: 0.8
+    align_tolerance_rad: 0.35    # con más error, gira sin avanzar
+    search_turn_rad_s: 0.5
+    lost_timeout_s: 1.0
+    control_rate_hz: 20.0
+    cubes_timeout_s: 1.0         # sin detecciones recientes, se queda quieto
+
+obstacle_guard:
+  ros__parameters:
+    slow_distance_m: 0.30
+    stop_distance_m: 0.15
+    slow_factor: 0.5
+    range_timeout_s: 0.5
+    cmd_timeout_s: 0.5
+    rate_hz: 20.0
