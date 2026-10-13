@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cámara del recolector</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --ink:#1d2330; --muted:#6b7280; --line:#e3e6ea; --ok:#15803d; --warn:#b45309; --bad:#b91c1c; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:12px 16px; background:#1d2330; color:#fff; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; font-weight:600; }
+  #state { padding:3px 10px; border-radius:999px; font-weight:600; font-size:13px; background:#4b5563; }
+  #state.BUSCAR { background:#2563eb; } #state.ACERCARSE { background:var(--warn); }
+  #state.LLEGUE { background:var(--ok); } #state.PAUSA, #state.SIN_CAMARA { background:var(--bad); }
+  main { display:grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap:16px; padding:16px; max-width:1300px; margin:0 auto; }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }
+  .card h2 { font-size:14px; margin:0 0 10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  #video { width:100%; border-radius:6px; background:#000; display:block; aspect-ratio: 4 / 3; object-fit:contain; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+  .chip { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--line); border-radius:999px; cursor:pointer; user-select:none; }
+  .chip input { margin:0; }
+  .dot { width:12px; height:12px; border-radius:50%; display:inline-block; border:1px solid rgba(0,0,0,.2); }
+  button { font:inherit; padding:8px 14px; border-radius:8px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+  button.primary { background:var(--ok); color:#fff; border-color:var(--ok); }
+  button.danger { background:var(--bad); color:#fff; border-color:var(--bad); }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:5px 4px; border-bottom:1px solid var(--line); }
+  td.num { font-variant-numeric: tabular-nums; }
+  .muted { color:var(--muted); font-size:13px; }
+  #msg { min-height:1.2em; font-size:13px; }
+  #msg.err { color:var(--bad); }
+  input[type=number] { width:80px; font:inherit; padding:4px 6px; }
+  dl { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:0; font-size:14px; }
+  dt { color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Recolector · cámara</h1>
+  <span id="state">…</span>
+  <span class="muted" id="fps" style="color:#cbd5e1"></span>
+</header>
+<main>
+  <section class="card">
+    <h2>Lo que ve el robot</h2>
+    <img id="video" src="/stream.mjpg" alt="video de la cámara">
+    <p class="muted">Cada caja es un cubo detectado: color, distancia a la cámara y ángulo (+ = izquierda).</p>
+  </section>
+  <aside style="display:flex; flex-direction:column; gap:16px;">
+    <section class="card">
+      <h2>Colores objetivo</h2>
+      <div class="row" id="colors"></div>
+      <div class="row">
+        <label>Parar a <input type="number" id="stop" min="0.05" max="1" step="0.01"> m</label>
+        <button id="apply">Aplicar</button>
+      </div>
+      <div class="row">
+        <button class="primary" id="start">Iniciar</button>
+        <button class="danger" id="pause">Pausar</button>
+      </div>
+      <div id="msg"></div>
+    </section>
+    <section class="card">
+      <h2>Comportamiento</h2>
+      <dl>
+        <dt>Objetivo</dt><dd id="target">—</dd>
+        <dt>Comando</dt><dd id="cmd">—</dd>
+      </dl>
+    </section>
+    <section class="card">
+      <h2>Cubos detectados</h2>
+      <table>
+        <thead><tr><th>Color</th><th>Distancia</th><th>Ángulo</th></tr></thead>
+        <tbody id="cubes"><tr><td colspan="3" class="muted">—</td></tr></tbody>
+      </table>
+    </section>
+  </aside>
+</main>
+<script>
+const SWATCH = { rojo:"#d42a24", naranja:"#f57314", amarillo:"#f2cc1a", verde:"#14a050", azul:"#1f45b8", morado:"#6b1a4d" };
+const $ = (id) => document.getElementById(id);
+let colorsBuilt = false, stopTouched = false, colorsTouched = false;
+
+function msg(text, err) { const m = $("msg"); m.textContent = text; m.className = err ? "err" : ""; }
+
+async function setParams(values) {
+  try {
+    const r = await fetch("/api/params", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(values) });
+    const j = await r.json();
+    msg(j.ok ? "Listo." : ("No se pudo: " + j.message), !j.ok);
+    if (j.ok) { stopTouched = false; colorsTouched = false; }
+  } catch (e) { msg("Sin conexión con el robot.", true); }
+}
+
+function buildColors(names) {
+  const box = $("colors"); box.innerHTML = "";
+  for (const n of names) {
+    const lab = document.createElement("label"); lab.className = "chip";
+    lab.innerHTML = `<input type="checkbox" value="${n}"><span class="dot" style="background:${SWATCH[n] || "#999"}"></span>${n}`;
+    lab.querySelector("input").addEventListener("change", () => { colorsTouched = true; });
+    box.appendChild(lab);
+  }
+  colorsBuilt = true;
+}
+
+function selectedColors() { return [...document.querySelectorAll("#colors input:checked")].map(i => i.value); }
+
+$("apply").onclick = () => {
+  const values = { target_colors: selectedColors() };
+  const s = parseFloat($("stop").value); if (!isNaN(s)) values.stop_distance_m = s;
+  setParams(values);
+};
+$("start").onclick = () => setParams({ enabled: true });
+$("pause").onclick = () => setParams({ enabled: false });
+$("stop").addEventListener("input", () => { stopTouched = true; });
+
+const deg = (r) => (r * 180 / Math.PI).toFixed(0) + "°";
+const cm = (m) => (m * 100).toFixed(0) + " cm";
+
+async function poll() {
+  try {
+    const s = await (await fetch("/api/state")).json();
+    if (!colorsBuilt) buildColors(s.color_names);
+    $("fps").textContent = s.fps ? s.fps + " fps" : "sin video";
+    const b = s.behavior;
+    const st = $("state");
+    if (b) {
+      st.textContent = b.enabled ? b.state : "PAUSA"; st.className = b.enabled ? b.state : "PAUSA";
+      if (!colorsTouched) for (const i of document.querySelectorAll("#colors input")) i.checked = b.target_colors.includes(i.value);
+      if (!stopTouched) $("stop").value = b.stop_distance_m.toFixed(2);
+      $("target").textContent = b.target ? `${b.target.color} a ${cm(b.target.distance_m)}, ${deg(b.target.bearing_rad)}` : "—";
+      $("cmd").textContent = `avance ${b.cmd.vx.toFixed(2)} m/s · giro ${b.cmd.wz.toFixed(2)} rad/s`;
+    } else {
+      st.textContent = "sin behavior_fsm"; st.className = "";
+    }
+    const rows = s.cubes.map(c => `<tr><td><span class="dot" style="background:${SWATCH[c.color] || "#999"}"></span> ${c.color}</td><td class="num">${cm(c.distance_m)}</td><td class="num">${deg(c.bearing_rad)}</td></tr>`);
+    $("cubes").innerHTML = rows.join("") || '<tr><td colspan="3" class="muted">ninguno</td></tr>';
+  } catch (e) {
+    $("state").textContent = "sin conexión"; $("state").className = "";
+  }
+}
+setInterval(poll, 300); poll();
+// si el video se corta (p. ej. se reinició el nodo), se vuelve a pedir
+$("video").onerror = () => setTimeout(() => { $("video").src = "/stream.mjpg?" + Date.now(); }, 1000);
+</script>
+</body>
+</html>

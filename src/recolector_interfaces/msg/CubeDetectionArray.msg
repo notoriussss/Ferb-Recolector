@@ -1,2 +1,4 @@
-# Todos los cubos vistos en un cuadro de la cámara.
-# TODO (rol 2 y rol 3): definir los campos.
+# Todos los cubos vistos en un cuadro de la cámara, del más cercano al más lejano.
+
+std_msgs/Header header    # stamp y frame de la imagen de la que salen
+CubeDetection[] cubes
