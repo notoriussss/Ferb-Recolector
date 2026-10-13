@@ -39,7 +39,7 @@ recolector-ucab/
 │   └── bringup/                launch files (robot real y simulación)
 ├── simulation/webots/        mundo de la pista y modelo del robot
 ├── docker/                   imagen de desarrollo (ROS 2 + Webots); se usa con compose.yaml
-├── tools/                    calibración HSV, generar el mundo para ROS
+├── tools/                    calibración HSV, generar el mundo para ROS, control directo del HAT
 ├── scripts/                  instalación de la Pi y de las laptops, prueba del HAT
 └── .github/                  CI, plantillas de PR e issues, CODEOWNERS
 ```

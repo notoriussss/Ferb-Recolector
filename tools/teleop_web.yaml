@@ -1,0 +1,32 @@
+# Parámetros del control manual por navegador (tools/teleop_web.py).
+# Los pines salen de docs/hardware.md; mientras estén en null, los motores van en modo falso.
+
+motors:
+  # GPIO (BCM) de IN1 / IN2 de cada motor del HAT Cokoino. TODO medir.
+  fl_pins: [null, null]
+  fr_pins: [null, null]
+  rl_pins: [null, null]
+  rr_pins: [null, null]
+  # true si esa rueda gira al revés (se invierte aquí, no en el cableado).
+  fl_inverted: false
+  fr_inverted: false
+  rl_inverted: false
+  rr_inverted: false
+  pwm_frequency_hz: 1000
+  # Tope de ciclo de trabajo (0–1). Arrancar bajo y subir con las ruedas en el aire.
+  max_duty_ratio: 0.5
+  # Si no llega un comando en este tiempo, se frenan los motores.
+  cmd_timeout_s: 0.5
+
+camera:
+  # "opencv" (webcam USB) o "picamera2" (módulo de cámara de la Pi).
+  backend: opencv
+  device_index: 0
+  width_px: 640
+  height_px: 480
+  fps: 15
+  jpeg_quality: 70
+
+server:
+  host: 127.0.0.1
+  port: 8081  # 8080 lo usa web_viewer
