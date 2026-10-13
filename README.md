@@ -5,6 +5,7 @@ Robot recolector de Robótica UCAB. Es un robot mecanum que recoge cubos de made
 En la pista también trabajan otros robots (otro recolector y la garra que clasifica los cubos desde el cuadrado). **Son proyectos aparte, de otros equipos.** Este repositorio es solo nuestro robot; lo que haya que acordar con ellos se anota en [`docs/interfaz-externa.md`](docs/interfaz-externa.md).
 
 > El código está vacío a propósito: cada archivo dice qué debe hacer y lleva un `TODO`. Lo escribe el equipo.
+> Ya hay un primer pedazo: visión por color y acercarse a un cubo (sin pala), probado en la simulación.
 
 ## Tecnología
 
@@ -33,10 +34,12 @@ recolector-ucab/
 ├── src/                      workspace ROS 2 (colcon)
 │   ├── recolector_interfaces/  mensajes propios
 │   ├── mobile_base/            motores, línea, ultrasonido, pala, color y máquina de estados
-│   ├── vision/                 cámara y detección de cubos
+│   ├── vision/                 cámara, detección de cubos y visor web
+│   ├── recolector_sim/         puente Webots ↔ ROS 2 (solo simulación)
 │   └── bringup/                launch files (robot real y simulación)
 ├── simulation/webots/        mundo de la pista y modelo del robot
-├── tools/                    calibración HSV
+├── docker/                   imagen de desarrollo (ROS 2 + Webots); se usa con compose.yaml
+├── tools/                    calibración HSV, generar el mundo para ROS
 ├── scripts/                  instalación de la Pi y de las laptops, prueba del HAT
 └── .github/                  CI, plantillas de PR e issues, CODEOWNERS
 ```
@@ -53,6 +56,17 @@ source install/setup.bash
 
 Simulación: abre `simulation/webots/worlds/pista_ucab.wbt` en Webots R2025a ([instrucciones](simulation/webots/README.md)).
 
+### Con Docker (sin instalar ROS)
+
+```bash
+docker compose build
+docker compose up sim        # Webots + nodos; abre http://localhost:8080 para ver la cámara
+```
+
+El robot simulado busca, se acerca al cubo más cercano de los colores elegidos y se detiene
+antes de la pala. Detalles y otros modos en [`docker/README.md`](docker/README.md). Para
+llevarlo a la Raspberry Pi: [`docs/despliegue-ssh.md`](docs/despliegue-ssh.md).
+
 ## Cómo trabajamos
 
 - `main` siempre compila; nada se sube directo a `main`.
@@ -68,4 +82,5 @@ Detalles en [`CONTRIBUTING.md`](CONTRIBUTING.md). Roles e hitos en [`docs/equipo
 - [Interfaz con los otros robots](docs/interfaz-externa.md)
 - [Equipo, roles e hitos](docs/equipo.md)
 - [Hardware y conexiones](docs/hardware.md)
+- [Pasar el código al robot por SSH](docs/despliegue-ssh.md)
 - [Plan original del recolector](docs/plan-recolector.md) (incluye ideas sobre los otros robots que ya no son parte de este repo)
