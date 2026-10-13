@@ -5,6 +5,8 @@ Abre un servidor HTTP (por defecto en el puerto 8080) con:
   /stream.mjpg   video MJPEG de cubes/debug_image (o de image_raw si no hay detector)
   /api/state     JSON con los cubos y el estado
   /api/params    POST JSON: cambia `enabled`, `target_colors` o `stop_distance_m` en behavior_fsm
+  /api/teleop    POST JSON {vx, vy, wz, speed} en [-1, 1] / [0, 1]: control manual con WASD.
+                 Publica cmd_vel_teleop; behavior_fsm le da prioridad y lo pasa por obstacle_guard.
 
 Sirve igual en la laptop (simulación) y en la Pi: desde otra máquina se abre
 http://<ip-de-la-pi>:8080 o se pasa por un túnel SSH (ver docs/despliegue-ssh.md).
@@ -20,6 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import cv2
 import rclpy
 from ament_index_python.packages import get_package_share_directory
+from geometry_msgs.msg import Twist
 from rcl_interfaces.msg import Parameter as ParameterMsg
 from rcl_interfaces.msg import ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
@@ -30,6 +33,7 @@ from std_msgs.msg import String
 
 from recolector_interfaces.msg import CubeDetectionArray
 from vision.ros_image import image_to_bgr
+from vision.teleop import TeleopLimits, teleop_velocity
 
 DEFAULT_COLORS = ["rojo", "naranja", "amarillo", "verde", "azul", "morado"]
 
@@ -76,6 +80,8 @@ class WebViewerNode(Node):
         self.declare_parameter("jpeg_quality", 75)
         self.declare_parameter("color_names", DEFAULT_COLORS)
         self.declare_parameter("behavior_node", "behavior_fsm")
+        self.declare_parameter("teleop_max_linear_m_s", 0.15)
+        self.declare_parameter("teleop_max_angular_rad_s", 1.0)
 
         self.frames = FrameBuffer()
         self._lock = threading.Lock()
@@ -93,6 +99,7 @@ class WebViewerNode(Node):
         self.create_subscription(String, "behavior/state", self._on_behavior, 10)
         behavior = self.get_parameter("behavior_node").value
         self._param_client = self.create_client(SetParameters, f"{behavior}/set_parameters")
+        self._pub_teleop = self.create_publisher(Twist, "cmd_vel_teleop", 10)
 
     # ---------- ROS ----------
     def _encode(self, msg: Image):
@@ -153,6 +160,15 @@ class WebViewerNode(Node):
                 "color_names": list(self.get_parameter("color_names").value),
             }
 
+    def teleop(self, data: dict) -> None:
+        limits = TeleopLimits(
+            self.get_parameter("teleop_max_linear_m_s").value,
+            self.get_parameter("teleop_max_angular_rad_s").value,
+        )
+        twist = Twist()
+        twist.linear.x, twist.linear.y, twist.angular.z = teleop_velocity(data, limits)
+        self._pub_teleop.publish(twist)
+
     def set_behavior_params(self, values: dict, timeout_s: float = 2.0) -> tuple[bool, str]:
         allowed = {"enabled", "target_colors", "stop_distance_m"}
         unknown = set(values) - allowed
@@ -208,7 +224,8 @@ def make_handler(node: WebViewerNode, index_html: bytes):
                 self._send(HTTPStatus.NOT_FOUND, b"no existe", "text/plain")
 
         def do_POST(self):
-            if not self.path.startswith("/api/params"):
+            is_teleop = self.path.startswith("/api/teleop")
+            if not (is_teleop or self.path.startswith("/api/params")):
                 self._send(HTTPStatus.NOT_FOUND, b"no existe", "text/plain")
                 return
             try:
@@ -216,8 +233,13 @@ def make_handler(node: WebViewerNode, index_html: bytes):
                 values = json.loads(self.rfile.read(length) or b"{}")
                 if not isinstance(values, dict):
                     raise ValueError("se esperaba un objeto JSON")
-            except (ValueError, json.JSONDecodeError) as e:
+                if is_teleop:
+                    node.teleop(values)
+            except (ValueError, TypeError, json.JSONDecodeError) as e:
                 self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "message": str(e)})
+                return
+            if is_teleop:
+                self._json(HTTPStatus.OK, {"ok": True, "message": "ok"})
                 return
             ok, message = node.set_behavior_params(values)
             code = HTTPStatus.OK if ok else HTTPStatus.CONFLICT

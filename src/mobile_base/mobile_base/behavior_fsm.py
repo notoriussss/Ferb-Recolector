@@ -5,6 +5,10 @@ Por ahora solo hace BUSCAR -> ACERCARSE -> LLEGUE (ver approach.py): gira hasta 
 de los colores objetivo, se acerca y se detiene a `stop_distance_m`. Publica cmd_vel_raw
 (pasa por obstacle_guard) y behavior/state.
 
+Control manual: si llega cmd_vel_teleop (WASD desde web_viewer), se pasa tal cual a
+cmd_vel_raw y el estado es MANUAL, aunque el comportamiento esté en pausa. Cuando deja de
+llegar por `teleop_timeout_s`, vuelve el comportamiento automático.
+
 Parámetros que se pueden cambiar en caliente (por ejemplo desde web_viewer):
   enabled        true / false
   target_colors  lista de colores, p. ej. ["rojo", "naranja"]
@@ -47,6 +51,7 @@ class BehaviorFsmNode(Node):
             self.declare_parameter(name, float(getattr(defaults, name)))
         self.declare_parameter("control_rate_hz", 20.0)
         self.declare_parameter("cubes_timeout_s", 1.0)
+        self.declare_parameter("teleop_timeout_s", 0.3)
 
         self._ctrl = ApproachController(self._read_params())
         self._ctrl.enabled = self.get_parameter("enabled").value
@@ -56,10 +61,13 @@ class BehaviorFsmNode(Node):
         self._cubes: list[Cube] = []
         self._cubes_stamp_s: float | None = None
         self._last_state = None
+        self._teleop = Twist()
+        self._teleop_stamp_s: float | None = None
 
         self._pub_cmd = self.create_publisher(Twist, "cmd_vel_raw", 10)
         self._pub_state = self.create_publisher(String, "behavior/state", 10)
         self.create_subscription(CubeDetectionArray, "cubes", self._on_cubes, 10)
+        self.create_subscription(Twist, "cmd_vel_teleop", self._on_teleop, 10)
         self.create_timer(1.0 / self.get_parameter("control_rate_hz").value, self._tick)
         self.get_logger().info(f"colores objetivo: {self._ctrl.params.target_colors}")
 
@@ -90,8 +98,16 @@ class BehaviorFsmNode(Node):
         self._cubes = [Cube(c.color, c.bearing_rad, c.distance_m) for c in msg.cubes]
         self._cubes_stamp_s = self._now_s()
 
+    def _on_teleop(self, msg: Twist):
+        self._teleop = msg
+        self._teleop_stamp_s = self._now_s()
+
     def _tick(self):
         now = self._now_s()
+        manual = (
+            self._teleop_stamp_s is not None
+            and now - self._teleop_stamp_s <= self.get_parameter("teleop_timeout_s").value
+        )
         stale = (
             self._cubes_stamp_s is None
             or now - self._cubes_stamp_s > self.get_parameter("cubes_timeout_s").value
@@ -104,12 +120,19 @@ class BehaviorFsmNode(Node):
             cmd = self._ctrl.update(self._cubes, now)
 
         twist = Twist()
-        if cmd is not None:
+        if manual:
+            twist.linear.x = self._teleop.linear.x
+            twist.linear.y = self._teleop.linear.y
+            twist.angular.z = self._teleop.angular.z
+        elif cmd is not None:
             twist.linear.x = cmd.vx
             twist.angular.z = cmd.wz
         self._pub_cmd.publish(twist)
 
-        state = "SIN_CAMARA" if stale else self._ctrl.state.value
+        if manual:
+            state = "MANUAL"
+        else:
+            state = "SIN_CAMARA" if stale else self._ctrl.state.value
         target = self._ctrl.target
         info = {
             "state": state,
@@ -123,7 +146,11 @@ class BehaviorFsmNode(Node):
                 "distance_m": round(target.distance_m, 3),
                 "bearing_rad": round(target.bearing_rad, 3),
             },
-            "cmd": {"vx": round(twist.linear.x, 3), "wz": round(twist.angular.z, 3)},
+            "cmd": {
+                "vx": round(twist.linear.x, 3),
+                "vy": round(twist.linear.y, 3),
+                "wz": round(twist.angular.z, 3),
+            },
         }
         self._pub_state.publish(String(data=json.dumps(info)))
         if state != self._last_state:

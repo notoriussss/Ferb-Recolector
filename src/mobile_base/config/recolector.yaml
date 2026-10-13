@@ -20,6 +20,7 @@ behavior_fsm:
     lost_timeout_s: 1.0
     control_rate_hz: 20.0
     cubes_timeout_s: 1.0         # sin detecciones recientes, se queda quieto
+    teleop_timeout_s: 0.3        # sin WASD reciente, vuelve el modo automático
 
 obstacle_guard:
   ros__parameters:

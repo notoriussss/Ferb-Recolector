@@ -30,7 +30,9 @@ docker compose up sim
 
 Arranca Webots sin ventana con `pista_ucab_ros.wbt`, el puente con ROS y los nodos.
 Abre **http://localhost:8080**: ves la cámara del robot con las cajas de los cubos, eliges
-los colores objetivo, la distancia de parada y lo pausas o lo inicias.
+los colores objetivo, la distancia de parada y lo pausas o lo inicias. También lo puedes
+manejar a mano con **W/A/S/D** (Q/E para girar, Shift más rápido): mientras tengas una tecla
+apretada el estado es `MANUAL`, aunque esté en pausa.
 
 El robot gira buscando, se acerca al cubo más cercano de los colores elegidos y se detiene
 a `stop_distance_m` (0,17 m de la cámara por defecto, unos 5 cm delante de la pala).

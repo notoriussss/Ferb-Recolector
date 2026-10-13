@@ -41,6 +41,9 @@ web_viewer:
     max_fps_hz: 15.0
     jpeg_quality: 75
     color_names: [rojo, naranja, amarillo, verde, azul, morado]
+    # topes del control manual (WASD) a velocidad 100 %; el máximo del robot es ~0,24 m/s
+    teleop_max_linear_m_s: 0.15
+    teleop_max_angular_rad_s: 1.0
 
 camera_node:
   ros__parameters:

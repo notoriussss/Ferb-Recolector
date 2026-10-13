@@ -13,6 +13,11 @@
   #state { padding:3px 10px; border-radius:999px; font-weight:600; font-size:13px; background:#4b5563; }
   #state.BUSCAR { background:#2563eb; } #state.ACERCARSE { background:var(--warn); }
   #state.LLEGUE { background:var(--ok); } #state.PAUSA, #state.SIN_CAMARA { background:var(--bad); }
+  #state.MANUAL { background:#7c3aed; }
+  .keys { display:grid; grid-template-columns:repeat(3, 48px); gap:6px; }
+  .key { height:48px; border:1px solid var(--line); border-radius:8px; display:grid; place-items:center;
+         font-weight:700; user-select:none; touch-action:none; cursor:pointer; background:#fff; }
+  .key.on { background:#7c3aed; color:#fff; border-color:#7c3aed; }
   main { display:grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap:16px; padding:16px; max-width:1300px; margin:0 auto; }
   @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
   .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }
@@ -61,6 +66,20 @@
         <button class="danger" id="pause">Pausar</button>
       </div>
       <div id="msg"></div>
+    </section>
+    <section class="card">
+      <h2>Control manual</h2>
+      <div class="row">
+        <div class="keys">
+          <div class="key" data-k="q">Q</div><div class="key" data-k="w">W</div>
+          <div class="key" data-k="e">E</div><div class="key" data-k="a">A</div>
+          <div class="key" data-k="s">S</div><div class="key" data-k="d">D</div>
+        </div>
+        <label>Velocidad <input type="range" id="tspeed" min="10" max="100" value="50">
+          <span id="tspeedv">50</span>%</label>
+      </div>
+      <p class="muted">W/S adelante·atrás · A/D de lado · Q/E girar · Shift = 100 % · espacio = soltar.
+        Mientras mueves, el robot está en MANUAL (aunque esté en pausa) y pasa por obstacle_guard.</p>
     </section>
     <section class="card">
       <h2>Comportamiento</h2>
@@ -127,11 +146,12 @@ async function poll() {
     const b = s.behavior;
     const st = $("state");
     if (b) {
-      st.textContent = b.enabled ? b.state : "PAUSA"; st.className = b.enabled ? b.state : "PAUSA";
+      const shown = (b.enabled || b.state === "MANUAL") ? b.state : "PAUSA";
+      st.textContent = shown; st.className = shown;
       if (!colorsTouched) for (const i of document.querySelectorAll("#colors input")) i.checked = b.target_colors.includes(i.value);
       if (!stopTouched) $("stop").value = b.stop_distance_m.toFixed(2);
       $("target").textContent = b.target ? `${b.target.color} a ${cm(b.target.distance_m)}, ${deg(b.target.bearing_rad)}` : "—";
-      $("cmd").textContent = `avance ${b.cmd.vx.toFixed(2)} m/s · giro ${b.cmd.wz.toFixed(2)} rad/s`;
+      $("cmd").textContent = `avance ${b.cmd.vx.toFixed(2)} m/s · lado ${(b.cmd.vy || 0).toFixed(2)} m/s · giro ${b.cmd.wz.toFixed(2)} rad/s`;
     } else {
       st.textContent = "sin behavior_fsm"; st.className = "";
     }
@@ -142,6 +162,44 @@ async function poll() {
   }
 }
 setInterval(poll, 300); poll();
+
+// ---------- control manual (WASD) ----------
+// Solo se manda mientras hay una tecla apretada (y un último "parar" al soltar), para que la
+// página abierta no le quite el control al modo automático.
+const held = new Set();
+let shift = false, wasMoving = false;
+$("tspeed").oninput = () => { $("tspeedv").textContent = $("tspeed").value; };
+const typing = () => ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)
+  && document.activeElement.type !== "range" && document.activeElement.type !== "checkbox";
+function paintKeys() {
+  for (const el of document.querySelectorAll(".key")) el.classList.toggle("on", held.has(el.dataset.k));
+}
+addEventListener("keydown", (ev) => {
+  if (typing()) return;
+  const k = ev.key.toLowerCase();
+  shift = ev.shiftKey;
+  if (k === " ") { held.clear(); ev.preventDefault(); }
+  else if ("wasdqe".includes(k) && k.length === 1) held.add(k);
+  paintKeys();
+});
+addEventListener("keyup", (ev) => { held.delete(ev.key.toLowerCase()); shift = ev.shiftKey; paintKeys(); });
+addEventListener("blur", () => { held.clear(); paintKeys(); });
+for (const el of document.querySelectorAll(".key")) {
+  el.onpointerdown = () => { held.add(el.dataset.k); paintKeys(); };
+  el.onpointerup = el.onpointerleave = el.onpointercancel = () => { held.delete(el.dataset.k); paintKeys(); };
+}
+async function teleopTick() {
+  const moving = held.size > 0;
+  if (!moving && !wasMoving) return;
+  wasMoving = moving;
+  const axis = (pos, neg) => (held.has(pos) ? 1 : 0) - (held.has(neg) ? 1 : 0);
+  const body = { vx: axis("w", "s"), vy: axis("a", "d"), wz: axis("q", "e"),
+                 speed: shift ? 1 : $("tspeed").value / 100 };
+  try {
+    await fetch("/api/teleop", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
+  } catch (e) { msg("Sin conexión con el robot.", true); }
+}
+setInterval(teleopTick, 100);
 // si el video se corta (p. ej. se reinició el nodo), se vuelve a pedir
 $("video").onerror = () => setTimeout(() => { $("video").src = "/stream.mjpg?" + Date.now(); }, 1000);
 </script>

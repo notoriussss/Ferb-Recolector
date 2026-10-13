@@ -60,7 +60,7 @@ Simulación: abre `simulation/webots/worlds/pista_ucab.wbt` en Webots R2025a ([i
 
 ```bash
 docker compose build
-docker compose up sim        # Webots + nodos; abre http://localhost:8080 para ver la cámara
+docker compose up sim        # Webots + nodos; abre http://localhost:8080: cámara y control con WASD
 ```
 
 El robot simulado busca, se acerca al cubo más cercano de los colores elegidos y se detiene

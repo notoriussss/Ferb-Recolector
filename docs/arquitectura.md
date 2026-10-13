@@ -24,6 +24,7 @@ flowchart LR
   det -->|cubes/debug_image| web[web_viewer]
   fsm -->|behavior/state| web
   web -.->|parámetros| fsm
+  web -->|cmd_vel_teleop| fsm
 ```
 
 En la simulación, `webots_bridge` (paquete `recolector_sim`) reemplaza a `camera_node`,
@@ -41,13 +42,14 @@ de los nodos es el mismo que en el robot real.
 | `mobile_base` | `behavior_fsm` | máquina de estados y conteo | rol 3 |
 | `vision` | `camera_node` | cámara → `image_raw` | rol 2 |
 | `vision` | `cube_detector` | cubos por color → `cubes` y `cubes/debug_image` | rol 2 |
-| `vision` | `web_viewer` | página web (puerto 8080): video, cubos, estado; cambia parámetros de `behavior_fsm` | rol 2 |
+| `vision` | `web_viewer` | página web (puerto 8080): video, cubos, estado; cambia parámetros de `behavior_fsm`; control manual con WASD | rol 2 |
 | `recolector_sim` | `webots_bridge` | solo simulación: Webots ↔ `image_raw`, `range`, `cmd_vel` | rol 4 |
 
 ## Tópicos (propuesta)
 
 | Tópico | Tipo | De → a |
 |---|---|---|
+| `cmd_vel_teleop` | `geometry_msgs/Twist` | `web_viewer` → `behavior_fsm` (WASD; tiene prioridad mientras llegue) |
 | `cmd_vel_raw` | `geometry_msgs/Twist` | `behavior_fsm` → `obstacle_guard` |
 | `cmd_vel` | `geometry_msgs/Twist` | `obstacle_guard` → `motor_driver` |
 | `line` | `recolector_interfaces/LineSensors` | `line_sensors` → `behavior_fsm` |
@@ -75,6 +77,8 @@ La distancia sale de la fila del cubo en la imagen, con la altura e inclinación
 **Implementado por ahora** (`mobile_base/approach.py`): `BUSCAR` (gira) → `ACERCARSE` →
 `LLEGUE` (se detiene a `stop_distance_m` del cubo más cercano de `target_colors`). Más
 `PAUSA` cuando `enabled` es falso y `SIN_CAMARA` si no llegan detecciones. Falta la pala.
+`MANUAL` mientras llegue `cmd_vel_teleop` (WASD en el visor web): tiene prioridad sobre todo lo
+demás, incluso en pausa, y sigue pasando por `obstacle_guard`.
 
 ```mermaid
 stateDiagram-v2

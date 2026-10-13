@@ -15,5 +15,6 @@
 ## Para probar
 
 - Primero con las ruedas en el aire (`scripts/test_hat.py`).
-- Control manual provisional con WASD y video: `python3 tools/teleop_web.py` y abrir http://localhost:8080 (`--fake` en la laptop). Pines y tope de velocidad en `tools/teleop_web.yaml`. No pasa por `obstacle_guard`. Desde otra máquina: `ssh -L 8080:localhost:8080 <usuario>@<ip-de-la-pi>` o `--host 0.0.0.0`.
+- Control directo del HAT, sin ROS (mientras no exista `motor_driver`): `python3 tools/teleop_web.py` y abrir http://localhost:8081 (`--fake` en la laptop). Pines y tope en `tools/teleop_web.yaml`. **No pasa por `obstacle_guard`**: ruedas en el aire. Desde otra máquina: `ssh -L 8081:localhost:8081 <usuario>@<ip-de-la-pi>`.
+- Con ROS, el control manual WASD está en el visor web (`web_viewer`, puerto 8080).
 - Si una rueda gira al revés, invierte ese motor en el YAML, no en el cableado.
