@@ -78,5 +78,10 @@ Arriba de cada robot hay un marcador ArUco (DICT_4X4_50: Phineas id 1, Ferb id 2
 - La caída de voltaje de la batería y el calentamiento de los motores.
 - El robot de garra (Perry) no está modelado; el cuadrado queda libre.
 
-## Siguiente paso: conectarlo con ROS 2
-Cuando empiecen los nodos de ROS 2 Jazzy, el puente es el paquete `webots_ros2`. En Windows se instala Webots en Windows y ROS 2 dentro de WSL2 con Ubuntu 24.04. Se cambia `controller` a `<extern>` y el driver de `webots_ros2` publica estos mismos dispositivos como tópicos. Así, los nodos que funcionen en la simulación pasan a la Pi 5 cambiando solo el nodo que habla con el HAT.
+## Conexión con ROS 2
+`worlds/pista_ucab_ros.wbt` es el mismo mundo con Phineas en `<extern>` y Ferb quieto. En lugar de `webots_ros2` se usa un puente propio y pequeño, `webots_bridge` (`src/recolector_sim`): publica `image_raw` y `range`, y mueve las ruedas con `cmd_vel`, igual que los nodos del robot real. Así, lo que funciona en la simulación pasa a la Pi 5 cambiando solo los nodos que hablan con el hardware.
+
+- Todo en Docker: `docker compose up sim` (Webots sin ventana) y abrir http://localhost:8080.
+- Webots en Windows y nodos en Docker: abrir `pista_ucab_ros.wbt`, darle ▶ y `docker compose up sim-externo`.
+
+Ver `docker/README.md`. Si cambias `pista_ucab.wbt`, corre `python3 tools/generar_mundo_ros.py`.

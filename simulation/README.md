@@ -6,4 +6,4 @@
 
 El mundo trae dos recolectores: uno es el nuestro y el otro sirve para ensayar con el recolector del otro equipo como obstáculo. Perry no está modelado.
 
-Siguiente paso: conectar Webots con ROS 2 (`webots_ros2`) para que nuestros nodos muevan el robot simulado. Ver `agents/simulacion-integracion.md`.
+Con ROS 2: el mundo `pista_ucab_ros.wbt` es igual, pero Phineas tiene controlador `<extern>` y lo maneja el nodo `webots_bridge` (`src/recolector_sim`). Se lanza con `ros2 launch bringup simulacion.launch.py` o con `docker compose up sim` (ver `docker/README.md`). Si cambias `pista_ucab.wbt`, regenera la variante con `python3 tools/generar_mundo_ros.py`.
