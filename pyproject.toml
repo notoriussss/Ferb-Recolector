@@ -26,6 +26,7 @@ max-complexity = 10
 known-first-party = [
     "mobile_base",
     "vision",
+    "recolector_common",
     "recolector_interfaces",
     "multirobot_interfaces",
     "recolector_sim",
