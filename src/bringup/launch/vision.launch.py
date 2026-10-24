@@ -1,9 +1,9 @@
-"""Solo visión en el robot real: cámara, detector y visor web. No mueve el robot.
+"""Vision only on the real robot: camera, detector and web viewer. Does not move the robot.
 
-Sirve para validar la detección de colores en la Pi antes de dejar que el robot se mueva.
+Useful to validate colour detection on the Pi before letting the robot move.
 
-  ros2 launch bringup vision.launch.py            # visor en http://<ip-de-la-pi>:8080
-  ros2 launch bringup vision.launch.py device:=1  # otra cámara (/dev/video1)
+  ros2 launch bringup vision.launch.py            # viewer at http://<pi-ip>:8080
+  ros2 launch bringup vision.launch.py device:=1  # another camera (/dev/video1)
 """
 
 import os
