@@ -1,15 +1,16 @@
-"""Nodo web_viewer: página web para ver la cámara del robot y elegir los colores objetivo.
+"""web_viewer node: web page to watch the robot camera and pick the target colours.
 
-Abre un servidor HTTP (por defecto en el puerto 8080) con:
-  /              página con el video, los cubos detectados y el estado del comportamiento
-  /stream.mjpg   video MJPEG de cubes/debug_image (o de image_raw si no hay detector)
-  /api/state     JSON con los cubos y el estado
-  /api/params    POST JSON: cambia `enabled`, `target_colors` o `stop_distance_m` en behavior_fsm
-  /api/teleop    POST JSON {vx, vy, wz, speed} en [-1, 1] / [0, 1]: control manual con WASD.
-                 Publica cmd_vel_teleop; behavior_fsm le da prioridad y lo pasa por obstacle_guard.
+Starts an HTTP server (port 8080 by default) with:
+  /              page with the video, detected cubes and behaviour state
+  /stream.mjpg   MJPEG video of cubes/debug_image (or image_raw if there is no detector)
+  /api/state     JSON with the cubes and the state
+  /api/params    POST JSON: changes `enabled`, `target_colors` or `stop_distance_m` in behavior_fsm
+  /api/teleop    POST JSON {vx, vy, wz, speed} in [-1, 1] / [0, 1]: WASD manual control.
+                 Publishes cmd_vel_teleop; behavior_fsm gives it priority and routes it through
+                 obstacle_guard.
 
-Sirve igual en la laptop (simulación) y en la Pi: desde otra máquina se abre
-http://<ip-de-la-pi>:8080 o se pasa por un túnel SSH (ver docs/despliegue-ssh.md).
+Works the same on the laptop (simulation) and on the Pi: from another machine open
+http://<pi-ip>:8080 or go through an SSH tunnel (see docs/ssh-deployment.md).
 """
 
 import json
@@ -35,11 +36,11 @@ from recolector_interfaces.msg import CubeDetectionArray
 from vision.ros_image import image_to_bgr
 from vision.teleop import TeleopLimits, teleop_velocity
 
-DEFAULT_COLORS = ["rojo", "naranja", "amarillo", "verde", "azul", "morado"]
+DEFAULT_COLORS = ["red", "orange", "yellow", "green", "blue", "purple"]
 
 
 class FrameBuffer:
-    """Último cuadro JPEG, compartido entre el hilo de ROS y los clientes HTTP."""
+    """Latest JPEG frame, shared between the ROS thread and the HTTP clients."""
 
     def __init__(self):
         self._cond = threading.Condition()
@@ -67,7 +68,7 @@ def _param_msg(name: str, value) -> ParameterMsg:
     elif isinstance(value, list):
         v.type, v.string_array_value = ParameterType.PARAMETER_STRING_ARRAY, [str(x) for x in value]
     else:
-        raise ValueError(f"tipo no soportado para {name}")
+        raise ValueError(f"unsupported type for {name}")
     return ParameterMsg(name=name, value=v)
 
 
@@ -124,7 +125,7 @@ class WebViewerNode(Node):
         self._encode(msg)
 
     def _on_raw_image(self, msg: Image):
-        # solo si no hay detector publicando la imagen anotada
+        # only if no detector is publishing the annotated image
         if time.monotonic() - self._last_debug_s > 1.0:
             self._encode(msg)
 
@@ -150,7 +151,7 @@ class WebViewerNode(Node):
         with self._lock:
             self._behavior = data
 
-    # ---------- para el servidor HTTP ----------
+    # ---------- for the HTTP server ----------
     def snapshot(self) -> dict:
         with self._lock:
             return {
@@ -173,9 +174,9 @@ class WebViewerNode(Node):
         allowed = {"enabled", "target_colors", "stop_distance_m"}
         unknown = set(values) - allowed
         if unknown:
-            return False, f"parámetros no permitidos: {sorted(unknown)}"
+            return False, f"parameters not allowed: {sorted(unknown)}"
         if not self._param_client.service_is_ready():
-            return False, "behavior_fsm no está corriendo"
+            return False, "behavior_fsm is not running"
         req = SetParameters.Request()
         try:
             req.parameters = [_param_msg(k, v) for k, v in values.items()]
@@ -185,7 +186,7 @@ class WebViewerNode(Node):
         future = self._param_client.call_async(req)
         future.add_done_callback(lambda _f: done.set())
         if not done.wait(timeout_s):
-            return False, "behavior_fsm no respondió"
+            return False, "behavior_fsm did not respond"
         results = future.result().results
         errors = [r.reason for r in results if not r.successful]
         return (not errors), "; ".join(errors) or "ok"
@@ -193,7 +194,7 @@ class WebViewerNode(Node):
 
 def make_handler(node: WebViewerNode, index_html: bytes):
     class Handler(BaseHTTPRequestHandler):
-        def log_message(self, fmt, *args):  # sin log por cada petición
+        def log_message(self, fmt, *args):  # no log for every request
             pass
 
         def _send(self, code, body: bytes, ctype: str):
@@ -217,22 +218,22 @@ def make_handler(node: WebViewerNode, index_html: bytes):
             elif self.path.startswith("/snapshot.jpg"):
                 _, jpg = node.frames.wait_next(-1, 0.0)
                 if jpg is None:
-                    self._send(HTTPStatus.SERVICE_UNAVAILABLE, b"sin imagen", "text/plain")
+                    self._send(HTTPStatus.SERVICE_UNAVAILABLE, b"no image", "text/plain")
                 else:
                     self._send(HTTPStatus.OK, jpg, "image/jpeg")
             else:
-                self._send(HTTPStatus.NOT_FOUND, b"no existe", "text/plain")
+                self._send(HTTPStatus.NOT_FOUND, b"not found", "text/plain")
 
         def do_POST(self):
             is_teleop = self.path.startswith("/api/teleop")
             if not (is_teleop or self.path.startswith("/api/params")):
-                self._send(HTTPStatus.NOT_FOUND, b"no existe", "text/plain")
+                self._send(HTTPStatus.NOT_FOUND, b"not found", "text/plain")
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 values = json.loads(self.rfile.read(length) or b"{}")
                 if not isinstance(values, dict):
-                    raise ValueError("se esperaba un objeto JSON")
+                    raise ValueError("expected a JSON object")
                 if is_teleop:
                     node.teleop(values)
             except (ValueError, TypeError, json.JSONDecodeError) as e:
@@ -276,7 +277,7 @@ def main(args=None):
     server = ThreadingHTTPServer((host, port), make_handler(node, index_html))
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    node.get_logger().info(f"visor web en http://{host}:{port}")
+    node.get_logger().info(f"web viewer at http://{host}:{port}")
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
