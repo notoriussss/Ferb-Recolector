@@ -33,13 +33,14 @@ recolector-ucab/
 ├── docs/                     architecture, external interface, team, hardware, plan and decisions
 ├── src/                      ROS 2 workspace (colcon)
 │   ├── recolector_interfaces/  custom messages
+│   ├── recolector_common/      helpers shared by the packages (ROS parameters, node boilerplate)
 │   ├── mobile_base/            motors, line, ultrasonic, scoop, colour and state machine
 │   ├── vision/                 camera, cube detection and web viewer
 │   ├── recolector_sim/         Webots ↔ ROS 2 bridge (simulation only)
 │   └── bringup/                launch files (real robot and simulation)
 ├── simulation/webots/        track world and robot model
 ├── docker/                   development image (ROS 2 + Webots); used with compose.yaml
-├── tools/                    HSV calibration, ROS world generation, direct HAT control
+├── tools/                    HSV calibration, ROS world generation, direct HAT control (teleop_web_lib/)
 ├── scripts/                  Pi and laptop setup, HAT test
 └── .github/                  CI, PR and issue templates, CODEOWNERS
 ```
