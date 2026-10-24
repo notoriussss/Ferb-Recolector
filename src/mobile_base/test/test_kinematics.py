@@ -1,4 +1,4 @@
-"""Pruebas: cinemática mecanum (adelante, lateral, giro)."""
+"""Tests: mecanum kinematics (forward, strafe, turn)."""
 
 import pytest
 
