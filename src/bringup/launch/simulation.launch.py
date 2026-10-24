@@ -1,18 +1,18 @@
-"""Lanza los nodos del recolector conectados a Webots.
+"""Launches the collector nodes connected to Webots.
 
-En lugar de webots_ros2 se usa un puente propio (recolector_sim/webots_bridge) que es el
-controlador <extern> del robot "Phineas" y publica los mismos tópicos que el robot real.
+Instead of webots_ros2 we use our own bridge (recolector_sim/webots_bridge), which is the
+<extern> controller of the "Phineas" robot and publishes the same topics as the real robot.
 
-Argumentos:
-  webots      headless (por defecto, sin ventana, para Docker), gui o none
-              (none = Webots ya está abierto, por ejemplo en Windows)
-  webots_url  a qué Webots conectarse: ipc://1234/Phineas (misma máquina) o
-              tcp://<ip>:1234/Phineas (Webots en otra máquina o fuera de Docker)
-  world       mundo a abrir (por defecto simulation/webots/worlds/pista_ucab_ros.wbt)
-  port        puerto del visor web (por defecto 8080)
+Arguments:
+  webots      headless (default, no window, for Docker), gui or none
+              (none = Webots is already open, for example on Windows)
+  webots_url  which Webots to connect to: ipc://1234/Phineas (same machine) or
+              tcp://<ip>:1234/Phineas (Webots on another machine or outside Docker)
+  world       world to open (default simulation/webots/worlds/pista_ucab_ros.wbt)
+  port        web viewer port (default 8080)
 
-Ejemplo:
-  ros2 launch bringup simulacion.launch.py webots:=gui
+Example:
+  ros2 launch bringup simulation.launch.py webots:=gui
 """
 
 import os
@@ -33,7 +33,7 @@ from launch_ros.actions import Node
 
 
 def _default_world() -> str:
-    # con --symlink-install este archivo apunta al repo: src/bringup/launch/ -> raíz
+    # with --symlink-install this file points into the repo: src/bringup/launch/ -> root
     repo = os.path.realpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../../.."))
     return os.path.join(repo, "simulation", "webots", "worlds", "pista_ucab_ros.wbt")
 
@@ -58,12 +58,12 @@ def _setup(context):
     }
 
     vision_cfg = os.path.join(get_package_share_directory("vision"), "config", "hsv_ranges.yaml")
-    base_cfg = os.path.join(get_package_share_directory("mobile_base"), "config", "recolector.yaml")
+    base_cfg = os.path.join(get_package_share_directory("mobile_base"), "config", "collector.yaml")
 
     actions = []
     if mode != "none":
         if not os.path.isfile(world):
-            raise RuntimeError(f"no existe el mundo {world}; pásalo con world:=<ruta>")
+            raise RuntimeError(f"world {world} does not exist; pass it with world:=<path>")
         cmd = ["webots", "--batch", "--mode=realtime", "--stdout", "--stderr"]
         if mode == "headless":
             cmd = [
@@ -78,7 +78,7 @@ def _setup(context):
         webots = ExecuteProcess(cmd=[*cmd, world], name="webots", output="screen")
         actions += [
             webots,
-            # si se cierra Webots, se cierra todo
+            # if Webots closes, everything shuts down
             RegisterEventHandler(
                 OnProcessExit(target_action=webots, on_exit=[EmitEvent(event=Shutdown())])
             ),
