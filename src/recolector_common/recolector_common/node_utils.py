@@ -1,5 +1,5 @@
 """
-rclpy helpers shared by the mobile_base nodes: clock access and the
+rclpy helpers shared by the collector nodes: clock access and the
 spin/shutdown boilerplate that every node's `main()` used to repeat.
 """
 
