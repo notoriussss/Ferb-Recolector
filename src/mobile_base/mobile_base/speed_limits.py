@@ -20,7 +20,7 @@ class GuardParams:
     """
     Distance thresholds and speed factor of the ultrasonic guard.
 
-    Field names double as ROS parameter names (see params.py).
+    Field names double as ROS parameter names (see recolector_common.params).
     """
 
     slow_distance_m: float = DEFAULT_SLOW_DISTANCE_M
