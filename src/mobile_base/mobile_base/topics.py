@@ -23,6 +23,8 @@ TOPIC_ROBOT_STATE = "state"
 
 # --- Shared fleet endpoints (absolute) ---------------------------------------
 TOPIC_ZONE_OCCUPANT = "/zone/occupant"
+# Overhead pose of the OTHER collector (Phineas); we are Ferb.
+TOPIC_PEER_POSE = "/phineas/pose"
 SERVICE_ZONE_REQUEST = "/zone/request"
 SERVICE_ZONE_RELEASE = "/zone/release"
 
