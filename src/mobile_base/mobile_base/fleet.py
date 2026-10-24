@@ -40,7 +40,7 @@ class FleetLinkParams:
     """
     Tunable parameters of the `fleet_link` node.
 
-    Field names double as ROS parameter names (see params.py).
+    Field names double as ROS parameter names (see recolector_common.params).
     """
 
     robot_name: str = DEFAULT_ROBOT_NAME
@@ -55,6 +55,9 @@ class Heartbeat:
     """
 
     def __init__(self, timeout_s: float = DEFAULT_HEARTBEAT_TIMEOUT_S):
+        """
+        Start with no heartbeat received.
+        """
         self.timeout_s = timeout_s
         self._last_beat_s: float | None = None
 
@@ -84,6 +87,9 @@ class ZoneClient:
         robot: str = DEFAULT_ROBOT_NAME,
         renew_period_s: float = DEFAULT_RENEW_PERIOD_S,
     ):
+        """
+        Start neither wanting nor holding the zone.
+        """
         self.robot = robot
         self.renew_period_s = renew_period_s
         self.want = False
