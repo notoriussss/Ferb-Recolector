@@ -1,23 +1,53 @@
-"""Approach a cube of the target colours and stop at a given distance.
+"""
+Approach a cube of the target colours and stop at a given distance.
 
-This is the first piece of the state machine (SEARCH -> APPROACH -> ARRIVED), without the scoop.
-Pure logic, no rclpy: the behavior_fsm node passes in the cubes it sees and publishes the command.
+This is the first piece of the state machine
+(SEARCH -> APPROACH -> ARRIVED), without the scoop. Pure logic, no rclpy:
+the behavior_fsm node passes in the cubes it sees and publishes the command.
 """
 
 import math
 from dataclasses import dataclass, field
-from enum import StrEnum
 
+from mobile_base.mathutil import clamp
+from mobile_base.states import State
 
-class State(StrEnum):
-    PAUSED = "PAUSED"
-    SEARCH = "SEARCH"
-    APPROACH = "APPROACH"
-    ARRIVED = "ARRIVED"
+# --- Defaults (the real values live in config/collector.yaml) -----------------
+DEFAULT_TARGET_COLORS = ("red", "orange", "yellow")
+# Stops when the cube is this far from the camera.
+DEFAULT_STOP_DISTANCE_M = 0.17
+# If the cube moves further than stop + margin, approach again.
+DEFAULT_RESUME_MARGIN_M = 0.04
+# Start slowing down from this distance.
+DEFAULT_SLOW_DOWN_DISTANCE_M = 0.45
+DEFAULT_MAX_FORWARD_M_S = 0.12
+DEFAULT_MIN_FORWARD_M_S = 0.03
+# rad/s of turn per rad of bearing error.
+DEFAULT_TURN_GAIN = 1.5
+DEFAULT_MAX_TURN_RAD_S = 0.8
+# With more bearing error than this, turn in place without moving forward.
+DEFAULT_ALIGN_TOLERANCE_RAD = 0.35
+DEFAULT_SEARCH_TURN_RAD_S = 0.5
+# Time without seeing the cube before searching again.
+DEFAULT_LOST_TIMEOUT_S = 1.0
+
+# --- Controller constants -----------------------------------------------------
+# Smallest allowed slow-down span, avoids dividing by zero.
+MIN_SLOW_DOWN_SPAN_M = 1e-6
+# Fraction of the forward speed removed when the bearing error is exactly at
+# the alignment tolerance (the worse the alignment, the slower).
+MAX_ALIGN_SLOWDOWN_FRACTION = 0.5
+# Search direction: +1 turns left (counter-clockwise), -1 turns right.
+SEARCH_DIR_LEFT = 1.0
+SEARCH_DIR_RIGHT = -1.0
 
 
 @dataclass(frozen=True)
 class Cube:
+    """
+    A cube seen by the camera, in robot polar coordinates.
+    """
+
     color: str
     bearing_rad: float  # positive = to the left
     distance_m: float
@@ -25,46 +55,62 @@ class Cube:
 
 @dataclass
 class ApproachParams:
-    target_colors: list[str] = field(default_factory=lambda: ["red", "orange", "yellow"])
-    stop_distance_m: float = 0.17  # stops when the cube is this far from the camera
-    resume_margin_m: float = 0.04  # if the cube moves further than this, approach again
-    slow_down_distance_m: float = 0.45  # start slowing down from here
-    max_forward_m_s: float = 0.12
-    min_forward_m_s: float = 0.03
-    turn_gain: float = 1.5  # rad/s per rad of error
-    max_turn_rad_s: float = 0.8
-    align_tolerance_rad: float = 0.35  # with more error than this, turn without moving forward
-    search_turn_rad_s: float = 0.5
-    lost_timeout_s: float = 1.0  # time without seeing the cube before searching again
+    """
+    Tunable parameters of `ApproachController`.
+
+    Field names double as ROS parameter names (see node_utils).
+    """
+
+    target_colors: list[str] = field(
+        default_factory=lambda: list(DEFAULT_TARGET_COLORS),
+    )
+    stop_distance_m: float = DEFAULT_STOP_DISTANCE_M
+    resume_margin_m: float = DEFAULT_RESUME_MARGIN_M
+    slow_down_distance_m: float = DEFAULT_SLOW_DOWN_DISTANCE_M
+    max_forward_m_s: float = DEFAULT_MAX_FORWARD_M_S
+    min_forward_m_s: float = DEFAULT_MIN_FORWARD_M_S
+    turn_gain: float = DEFAULT_TURN_GAIN
+    max_turn_rad_s: float = DEFAULT_MAX_TURN_RAD_S
+    align_tolerance_rad: float = DEFAULT_ALIGN_TOLERANCE_RAD
+    search_turn_rad_s: float = DEFAULT_SEARCH_TURN_RAD_S
+    lost_timeout_s: float = DEFAULT_LOST_TIMEOUT_S
 
 
 @dataclass(frozen=True)
 class Command:
+    """
+    Velocity command: forward speed (m/s) and turn rate (rad/s).
+    """
+
     vx: float = 0.0
     wz: float = 0.0
 
 
-def _clamp(x: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, x))
-
-
 class ApproachController:
+    """
+    SEARCH -> APPROACH -> ARRIVED controller for one target cube.
+    """
+
     def __init__(self, params: ApproachParams | None = None):
         self.params = params or ApproachParams()
         self.state = State.SEARCH
         self.enabled = True
         self.target: Cube | None = None
         self._last_seen_s: float | None = None
-        self._search_dir = 1.0
+        self._search_dir = SEARCH_DIR_LEFT
 
     def pick_target(self, cubes: list[Cube]) -> Cube | None:
-        """The nearest cube of the target colours."""
+        """
+        The nearest cube of the target colours.
+        """
         wanted = set(self.params.target_colors)
         candidates = [c for c in cubes if c.color in wanted]
         return min(candidates, key=lambda c: c.distance_m, default=None)
 
     def update(self, cubes: list[Cube], now_s: float) -> Command:
-        p = self.params
+        """
+        Run one control step and return the velocity command.
+        """
         if not self.enabled:
             self.state = State.PAUSED
             self.target = None
@@ -74,35 +120,70 @@ class ApproachController:
 
         cube = self.pick_target(cubes)
         if cube is not None:
-            self.target = cube
-            self._last_seen_s = now_s
-            self._search_dir = 1.0 if cube.bearing_rad >= 0 else -1.0
-            if self.state == State.ARRIVED:
-                if cube.distance_m <= p.stop_distance_m + p.resume_margin_m:
-                    return Command()
-            elif cube.distance_m <= p.stop_distance_m:
-                self.state = State.ARRIVED
-                return Command()
-            self.state = State.APPROACH
-            return self._drive_to(cube)
+            return self._on_cube_seen(cube, now_s)
+        return self._on_cube_missing(now_s)
 
-        # no target cube in sight
-        lost_for = math.inf if self._last_seen_s is None else now_s - self._last_seen_s
-        if lost_for < p.lost_timeout_s and self.state in (State.APPROACH, State.ARRIVED):
-            # may be a bad frame: wait in place for a moment
+    def _on_cube_seen(self, cube: Cube, now_s: float) -> Command:
+        """
+        Handle a step where a target cube is visible.
+        """
+        p = self.params
+        self.target = cube
+        self._last_seen_s = now_s
+        self._search_dir = (
+            SEARCH_DIR_LEFT if cube.bearing_rad >= 0 else SEARCH_DIR_RIGHT
+        )
+        if self.state == State.ARRIVED:
+            if cube.distance_m <= p.stop_distance_m + p.resume_margin_m:
+                return Command()
+        elif cube.distance_m <= p.stop_distance_m:
+            self.state = State.ARRIVED
+            return Command()
+        self.state = State.APPROACH
+        return self._drive_to(cube)
+
+    def _on_cube_missing(self, now_s: float) -> Command:
+        """
+        Handle a step where no target cube is visible.
+        """
+        p = self.params
+        if self._last_seen_s is None:
+            lost_for_s = math.inf
+        else:
+            lost_for_s = now_s - self._last_seen_s
+        recently_seen = lost_for_s < p.lost_timeout_s
+        if recently_seen and self.state in (State.APPROACH, State.ARRIVED):
+            # May be a bad frame: wait in place for a moment.
             return Command()
         self.state = State.SEARCH
         self.target = None
         return Command(0.0, self._search_dir * p.search_turn_rad_s)
 
     def _drive_to(self, cube: Cube) -> Command:
+        """
+        Turn toward the cube and drive at a speed that fades with distance
+        and with the alignment error.
+        """
         p = self.params
-        wz = _clamp(p.turn_gain * cube.bearing_rad, -p.max_turn_rad_s, p.max_turn_rad_s)
+        wz = clamp(
+            p.turn_gain * cube.bearing_rad,
+            -p.max_turn_rad_s,
+            p.max_turn_rad_s,
+        )
         if abs(cube.bearing_rad) > p.align_tolerance_rad:
             return Command(0.0, wz)
-        span = max(1e-6, p.slow_down_distance_m - p.stop_distance_m)
-        frac = _clamp((cube.distance_m - p.stop_distance_m) / span, 0.0, 1.0)
-        vx = p.min_forward_m_s + frac * (p.max_forward_m_s - p.min_forward_m_s)
-        # the worse the alignment, the slower the forward speed
-        vx *= 1.0 - abs(cube.bearing_rad) / p.align_tolerance_rad * 0.5
+        span_m = max(
+            MIN_SLOW_DOWN_SPAN_M,
+            p.slow_down_distance_m - p.stop_distance_m,
+        )
+        fraction = clamp(
+            (cube.distance_m - p.stop_distance_m) / span_m,
+            0.0,
+            1.0,
+        )
+        vx = p.min_forward_m_s + fraction * (
+            p.max_forward_m_s - p.min_forward_m_s
+        )
+        alignment_error = abs(cube.bearing_rad) / p.align_tolerance_rad
+        vx *= 1.0 - alignment_error * MAX_ALIGN_SLOWDOWN_FRACTION
         return Command(vx, wz)
