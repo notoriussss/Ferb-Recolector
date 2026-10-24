@@ -3,7 +3,7 @@
 <package format="3">
   <name>vision</name>
   <version>0.0.0</version>
-  <description>Cámara del recolector y detección de cubos por color.</description>
+  <description>Collector camera and colour-based cube detection.</description>
   <maintainer email="TODO@ucab.edu.ve">TODO</maintainer>
   <license>MIT</license>
 
