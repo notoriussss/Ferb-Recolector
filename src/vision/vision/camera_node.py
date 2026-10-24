@@ -1,10 +1,10 @@
-"""Nodo camera_node: abre la cámara y publica image_raw.
+"""camera_node node: opens the camera and publishes image_raw.
 
-Usa OpenCV (V4L2): sirve para una webcam USB o para la cámara de la Pi si el sistema la
-expone como /dev/videoN. En la simulación no se usa: webots_bridge publica image_raw.
+Uses OpenCV (V4L2): works with a USB webcam or with the Pi camera if the system exposes it
+as /dev/videoN. Not used in simulation: webots_bridge publishes image_raw.
 
-TODO (rol 2): probar con la OV5647 en la Pi 5 (puede necesitar libcamera / un pipeline
-de GStreamer en `device`).
+TODO (role 2): test with the OV5647 on the Pi 5 (may need libcamera / a GStreamer
+pipeline in `device`).
 """
 
 import cv2
@@ -19,12 +19,12 @@ from vision.ros_image import bgr_to_image
 class CameraNode(Node):
     def __init__(self):
         super().__init__("camera_node")
-        # número de /dev/videoN o un pipeline de GStreamer
+        # /dev/videoN number or a GStreamer pipeline
         self.declare_parameter("device", "0")
         self.declare_parameter("width_px", 640)
         self.declare_parameter("height_px", 480)
         self.declare_parameter("fps_hz", 15.0)
-        self.declare_parameter("frame_id", "camara")
+        self.declare_parameter("frame_id", "camera")
 
         device = self.get_parameter("device").value
         self._frame_id = self.get_parameter("frame_id").value
@@ -35,7 +35,7 @@ class CameraNode(Node):
         self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.get_parameter("width_px").value)
         self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.get_parameter("height_px").value)
         if not self._cap.isOpened():
-            self.get_logger().error(f"no se pudo abrir la cámara '{device}'")
+            self.get_logger().error(f"could not open camera '{device}'")
 
         self._pub = self.create_publisher(Image, "image_raw", qos_profile_sensor_data)
         self.create_timer(1.0 / self.get_parameter("fps_hz").value, self._tick)
@@ -43,7 +43,7 @@ class CameraNode(Node):
     def _tick(self):
         ok, frame = self._cap.read()
         if not ok:
-            self.get_logger().warn("no llegó imagen de la cámara", throttle_duration_sec=5.0)
+            self.get_logger().warn("no image from the camera", throttle_duration_sec=5.0)
             return
         msg = bgr_to_image(frame)
         msg.header.stamp = self.get_clock().now().to_msg()
