@@ -44,14 +44,14 @@ at `stop_distance_m` (0.17 m from the camera by default, about 5 cm in front of 
 
 1. Install Webots R2025a on Windows or Linux (https://cyberbotics.com).
 2. Open `simulation/webots/worlds/pista_ucab_ros.wbt` and press ▶. The console will say
-   `Waiting for local or remote connection on port 1234 targeting robot named 'Phineas'`.
+   `Waiting for local or remote connection on port 1234 targeting robot named 'Ferb'`.
 3. In another terminal:
 
    ```bash
    docker compose up sim-external
    ```
 
-   The bridge connects to `tcp://host.docker.internal:1234/Phineas`. If Webots is on another
+   The bridge connects to `tcp://host.docker.internal:1234/Ferb`. If Webots is on another
    machine: `WEBOTS_HOST=192.168.x.y docker compose up sim-external`.
 4. Open http://localhost:8080.
 
