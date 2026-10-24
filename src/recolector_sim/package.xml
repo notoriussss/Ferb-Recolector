@@ -3,7 +3,7 @@
 <package format="3">
   <name>recolector_sim</name>
   <version>0.0.0</version>
-  <description>Puente entre Webots y ROS 2 para el recolector simulado.</description>
+  <description>Bridge between Webots and ROS 2 for the simulated collector.</description>
   <maintainer email="TODO@ucab.edu.ve">TODO</maintainer>
   <license>MIT</license>
 
