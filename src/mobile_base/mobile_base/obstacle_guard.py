@@ -1,8 +1,8 @@
-"""Nodo obstacle_guard: limita la velocidad de cmd_vel_raw según la distancia del ultrasonido
-y publica cmd_vel.
+"""obstacle_guard node: limits the cmd_vel_raw speed based on the ultrasonic distance
+and publishes cmd_vel.
 
-Niveles en speed_limits.py. Si no llega `range` reciente, no deja avanzar (sí girar,
-ir de lado o retroceder). Si deja de llegar cmd_vel_raw, publica cero.
+Levels are in speed_limits.py. Without a recent `range`, forward motion is blocked (turning,
+strafing and reversing are still allowed). If cmd_vel_raw stops arriving, it publishes zero.
 """
 
 import math
@@ -73,7 +73,7 @@ class ObstacleGuardNode(Node):
             out.angular.z = self._cmd.angular.z
             if out.linear.x == 0.0 and self._cmd.linear.x > 0.0:
                 self.get_logger().warn(
-                    "avance bloqueado: obstáculo cerca o sin ultrasonido",
+                    "forward blocked: obstacle nearby or no ultrasonic reading",
                     throttle_duration_sec=2.0,
                 )
         self._pub.publish(out)
