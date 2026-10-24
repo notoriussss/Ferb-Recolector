@@ -1,4 +1,4 @@
-"""Nodo line_sensors: lee los 4 sensores de línea TCRT5000 y publica line.
+"""line_sensors node: reads the 4 TCRT5000 line sensors and publishes line.
 
-TODO: implementar.
+TODO: implement.
 """
