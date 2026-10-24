@@ -44,9 +44,9 @@ class PeerAvoidanceParams:
     """
     Tunable parameters of `PeerAvoidance`.
 
-    Field names double as ROS parameter names (see params.py), so the two
-    distances carry the `peer_` prefix to stay apart from the ultrasonic
-    guard thresholds.
+    Field names double as ROS parameter names (see recolector_common.params),
+    so the two distances carry the `peer_` prefix to stay apart from the
+    ultrasonic guard thresholds.
     """
 
     pose_max_age_s: float = DEFAULT_POSE_MAX_AGE_S
@@ -77,6 +77,9 @@ class PeerAvoidance:
     """
 
     def __init__(self, params: PeerAvoidanceParams | None = None):
+        """
+        Start with no deadlock in progress.
+        """
         self.params = params or PeerAvoidanceParams()
         self._blocked_since_s: float | None = None
         self._escaping = False
