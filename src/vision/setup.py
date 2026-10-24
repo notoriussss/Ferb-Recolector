@@ -18,7 +18,7 @@ setup(
     zip_safe=True,
     maintainer="TODO",
     maintainer_email="TODO@ucab.edu.ve",
-    description="Cámara del recolector y detección de cubos por color.",
+    description="Collector camera and colour-based cube detection.",
     license="MIT",
     tests_require=["pytest"],
     entry_points={
