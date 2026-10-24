@@ -1,22 +1,39 @@
-"""Speed limit based on the ultrasonic distance. Pure logic, no rclpy.
+"""
+Speed limit based on the ultrasonic distance. Pure logic, no rclpy.
 
-Levels from the plan: beyond `slow_distance_m` normal, between `stop_distance_m` and
-`slow_distance_m` half speed, below `stop_distance_m` stopped. Only forward motion is limited
-(vx > 0): reversing, strafing and turning are allowed so the robot can get out.
+Levels from the plan: beyond `slow_distance_m` normal speed, between
+`stop_distance_m` and `slow_distance_m` reduced speed, below
+`stop_distance_m` stopped. Only forward motion is limited (vx > 0):
+reversing, strafing and turning are allowed so the robot can get out.
 """
 
 from dataclasses import dataclass
 
+# --- Defaults (the real values live in config/collector.yaml) -----------------
+DEFAULT_SLOW_DISTANCE_M = 0.30
+DEFAULT_STOP_DISTANCE_M = 0.15
+DEFAULT_SLOW_FACTOR = 0.5
+
 
 @dataclass(frozen=True)
 class GuardParams:
-    slow_distance_m: float = 0.30
-    stop_distance_m: float = 0.15
-    slow_factor: float = 0.5
+    """
+    Distance thresholds and speed factor of the ultrasonic guard.
+
+    Field names double as ROS parameter names (see params.py).
+    """
+
+    slow_distance_m: float = DEFAULT_SLOW_DISTANCE_M
+    stop_distance_m: float = DEFAULT_STOP_DISTANCE_M
+    slow_factor: float = DEFAULT_SLOW_FACTOR
 
 
 def limit_forward(vx: float, range_m: float | None, p: GuardParams) -> float:
-    """Allowed forward speed. `range_m` None = no recent reading: no forward motion."""
+    """
+    Allowed forward speed for the requested `vx`.
+
+    `range_m` None means there is no recent reading: no forward motion.
+    """
     if vx <= 0.0:
         return vx
     if range_m is None or range_m < p.stop_distance_m:
