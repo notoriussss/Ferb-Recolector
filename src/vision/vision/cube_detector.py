@@ -1,12 +1,12 @@
-"""Nodo cube_detector: busca cubos por color (HSV) en image_raw y publica cubes.
+"""cube_detector node: finds cubes by colour (HSV) in image_raw and publishes cubes.
 
-También publica cubes/debug_image: la misma imagen con una caja por cubo, para verla en
-web_viewer o en rqt_image_view.
+It also publishes cubes/debug_image: the same image with one box per cube, to view it in
+web_viewer or rqt_image_view.
 
-Los rangos HSV y la geometría de la cámara vienen de config/hsv_ranges.yaml. Se pueden
-cambiar en caliente con `ros2 param set /cube_detector ...`.
+HSV ranges and camera geometry come from config/hsv_ranges.yaml. They can be
+changed at runtime with `ros2 param set /cube_detector ...`.
 
-TODO: ubicar también el cuadrado de entrega.
+TODO: also locate the delivery square.
 """
 
 import rclpy
@@ -26,7 +26,7 @@ from vision.color_detection import (
 )
 from vision.ros_image import bgr_to_image, image_to_bgr
 
-DEFAULT_COLORS = ["rojo", "naranja", "amarillo", "verde", "azul", "morado"]
+DEFAULT_COLORS = ["red", "orange", "yellow", "green", "blue", "purple"]
 
 
 class CubeDetectorNode(Node):
@@ -55,10 +55,10 @@ class CubeDetectorNode(Node):
         self._pub_debug = self.create_publisher(Image, "cubes/debug_image", qos_profile_sensor_data)
         self.create_subscription(Image, "image_raw", self._on_image, qos_profile_sensor_data)
         self.get_logger().info(
-            f"buscando cubos de colores: {', '.join(self.get_parameter('color_names').value)}"
+            f"looking for cubes of colours: {', '.join(self.get_parameter('color_names').value)}"
         )
 
-    # ---------- parámetros ----------
+    # ---------- parameters ----------
     def _validate_params(self, params):
         for p in params:
             if p.name.startswith("hsv."):
@@ -69,7 +69,7 @@ class CubeDetectorNode(Node):
         return SetParametersResult(successful=True)
 
     def _on_params_changed(self, _params):
-        # se reconstruye el detector con el próximo cuadro
+        # the detector is rebuilt on the next frame
         self._detector = None
 
     def _build_detector(self, width: int, height: int) -> ColorDetector:
@@ -77,7 +77,7 @@ class CubeDetectorNode(Node):
         for name in self.get_parameter("color_names").value:
             values = self.get_parameter(f"hsv.{name}").value
             if not values:
-                self.get_logger().warn(f"el color '{name}' no tiene rango hsv.{name}; se ignora")
+                self.get_logger().warn(f"colour '{name}' has no hsv.{name} range; ignored")
                 continue
             ranges[name] = parse_hsv_ranges(values)
         camera = CameraModel(
@@ -97,7 +97,7 @@ class CubeDetectorNode(Node):
         )
         return ColorDetector(ranges, camera, filters)
 
-    # ---------- imagen ----------
+    # ---------- image ----------
     def _on_image(self, msg: Image):
         try:
             bgr = image_to_bgr(msg)
