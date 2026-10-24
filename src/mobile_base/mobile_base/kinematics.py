@@ -1,7 +1,7 @@
-"""Cinemática inversa mecanum (rodillos en X). Lógica pura, sin rclpy.
+"""Mecanum inverse kinematics (X-roller layout). Pure logic, no rclpy.
 
-Convención REP 103: vx > 0 adelante, vy > 0 a la izquierda, wz > 0 antihorario.
-Orden de ruedas: fl, fr, rl, rr.
+REP 103 convention: vx > 0 forward, vy > 0 left, wz > 0 counter-clockwise.
+Wheel order: fl, fr, rl, rr.
 """
 
 from dataclasses import dataclass
@@ -12,12 +12,12 @@ WHEELS = ("fl", "fr", "rl", "rr")
 @dataclass(frozen=True)
 class MecanumGeometry:
     wheel_radius_m: float
-    half_wheelbase_m: float  # mitad de la distancia entre ejes (adelante-atrás)
-    half_track_m: float  # mitad de la trocha (izquierda-derecha)
+    half_wheelbase_m: float  # half the wheelbase (front-back)
+    half_track_m: float  # half the track width (left-right)
 
 
 def wheel_speeds(vx: float, vy: float, wz: float, geo: MecanumGeometry) -> dict[str, float]:
-    """Velocidad angular de cada rueda (rad/s) para un movimiento (m/s, m/s, rad/s)."""
+    """Angular speed of each wheel (rad/s) for a motion (m/s, m/s, rad/s)."""
     k = geo.half_wheelbase_m + geo.half_track_m
     r = geo.wheel_radius_m
     return {
@@ -29,7 +29,7 @@ def wheel_speeds(vx: float, vy: float, wz: float, geo: MecanumGeometry) -> dict[
 
 
 def scale_to_limit(speeds: dict[str, float], max_abs: float) -> dict[str, float]:
-    """Si alguna rueda pasa de `max_abs`, escala todas por igual (se conserva la dirección)."""
+    """If any wheel exceeds `max_abs`, scale all of them equally (direction is preserved)."""
     peak = max(abs(v) for v in speeds.values())
     if peak <= max_abs or peak == 0.0:
         return dict(speeds)
