@@ -33,7 +33,7 @@ This repo is a class project. Code files start empty, with a docstring and a `TO
 - Pure logic (kinematics, colour classification, state machine) goes in modules without `rclpy`, with tests in `test/`.
 - Hardware access goes behind a class with a fake version, so it can be tested on the laptop.
 - No magic numbers or strings in the code: a named constant (`UPPER_SNAKE_CASE`, with a comment giving the unit or why), or the YAML if it is tunable. Topic and service names live in `topics.py`, states in `states.py`. `ruff` enforces comparisons (PLR2004).
-- Parameters are declared once, as dataclass fields (`mobile_base/params.py`); the field name is the ROS parameter name. A node's default must equal the YAML value, or come from the same constant.
+- Parameters are declared once, as dataclass fields (`recolector_common/params.py`, shared by every package); the field name is the ROS parameter name. A node's default must equal the YAML value, or come from the same constant.
 - Docstrings: the quotes go on their own lines and the text sits at the same indentation, for every module, class and function (one-liners too):
 
   ```python
