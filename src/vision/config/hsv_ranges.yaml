@@ -7,7 +7,7 @@
 # TODO (role 2): green, blue, orange and purple are still calibrated on the SIMULATION (Webots).
 # Recalibrate them with the real cubes/line and the lab lighting (tools/hsv_tuner.py).
 
-cube_detector:
+/**/cube_detector:
   ros__parameters:
     color_names: [yellow, red]
     hsv:
@@ -35,7 +35,7 @@ cube_detector:
 
     publish_debug_image: true
 
-web_viewer:
+/**/web_viewer:
   ros__parameters:
     port: 8080
     max_fps_hz: 15.0
@@ -45,7 +45,7 @@ web_viewer:
     teleop_max_linear_m_s: 0.15
     teleop_max_angular_rad_s: 1.0
 
-camera_node:
+/**/camera_node:
   ros__parameters:
     device: "0"        # /dev/video0, or a GStreamer pipeline
     width_px: 640
