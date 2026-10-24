@@ -18,6 +18,8 @@ LOOP_PERIOD_S = 0.02
 # How long close() waits for the control thread to finish.
 JOIN_TIMEOUT_S = 1.0
 
+# vx, vy and wz are the first three fields of a DriveCommand (speed is last).
+AXIS_COUNT = 3
 SPEED_MIN = 0.0
 SPEED_MAX = 1.0
 
@@ -132,7 +134,7 @@ class Drive:
         with self._lock:
             manual = self._cmd
             expired = now - self._stamp > self._timeout_s
-            manual_active = not expired and any(manual[:3])
+            manual_active = not expired and any(manual[:AXIS_COUNT])
             if manual_active:
                 self._pilot.mark_manual()
                 return manual
