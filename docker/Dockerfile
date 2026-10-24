@@ -1,11 +1,11 @@
-# Collector development image: ROS 2 Jazzy + OpenCV (+ Webots R2025a in the "sim" stage).
+# Collector development image: ROS 2 Lyrical + OpenCV (+ Webots R2025a in the "sim" stage).
 #
 #   base -> the minimum to build and run the nodes (also works on the Pi 5, arm64)
 #   sim  -> base + headless Webots R2025a (amd64 only)
 #
 # Used from compose.yaml (repo root). See docker/README.md.
 
-ARG BASE_IMAGE=ros:jazzy-ros-base
+ARG BASE_IMAGE=ros:lyrical-ros-base
 FROM ${BASE_IMAGE} AS base
 
 ENV DEBIAN_FRONTEND=noninteractive

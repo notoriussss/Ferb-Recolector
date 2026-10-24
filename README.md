@@ -12,8 +12,8 @@ Other robots also work on the track (another collector and the claw that sorts t
 | Layer | Choice |
 |---|---|
 | Computer | Raspberry Pi 5, 8 GB |
-| Operating system | Ubuntu 24.04 LTS (Server on the Pi; Desktop or WSL2 on the laptops) |
-| Middleware | ROS 2 Jazzy |
+| Operating system | Ubuntu 26.04 LTS (Server on the Pi; Desktop or WSL2 on the laptops) |
+| Middleware | ROS 2 Lyrical |
 | Language | **Python 3.12** with `rclpy` |
 | Vision | OpenCV (HSV) |
 | GPIO | `lgpio` / `gpiozero` (RPi.GPIO does not work on the Pi 5) |
@@ -30,16 +30,17 @@ recolector-ucab/
 ├── AGENTS.md                 rules for AI assistants (Claude, Copilot, Codex…)
 ├── CLAUDE.md                 points to AGENTS.md
 ├── agents/                   per-area guides for AI assistants and for reviewing PRs
-├── docs/                     architecture, external interface, team, hardware, plan and decisions
+├── docs/                     architecture, code style, external interface, team, hardware, plan and decisions
 ├── src/                      ROS 2 workspace (colcon)
 │   ├── recolector_interfaces/  custom messages
+│   ├── recolector_common/      helpers shared by the packages (ROS parameters, node boilerplate)
 │   ├── mobile_base/            motors, line, ultrasonic, scoop, colour and state machine
 │   ├── vision/                 camera, cube detection and web viewer
 │   ├── recolector_sim/         Webots ↔ ROS 2 bridge (simulation only)
 │   └── bringup/                launch files (real robot and simulation)
 ├── simulation/webots/        track world and robot model
 ├── docker/                   development image (ROS 2 + Webots); used with compose.yaml
-├── tools/                    HSV calibration, ROS world generation, direct HAT control
+├── tools/                    HSV calibration, ROS world generation, direct HAT control (teleop_web_lib/)
 ├── scripts/                  Pi and laptop setup, HAT test
 └── .github/                  CI, PR and issue templates, CODEOWNERS
 ```
@@ -49,7 +50,7 @@ recolector-ucab/
 ```bash
 git clone <repo-url> ~/recolector-ucab
 cd ~/recolector-ucab
-source /opt/ros/jazzy/setup.bash
+source /opt/ros/lyrical/setup.bash
 colcon build --symlink-install
 source install/setup.bash
 ```
@@ -80,6 +81,7 @@ Details in [`CONTRIBUTING.md`](CONTRIBUTING.md). Roles and milestones in [`docs/
 
 - [Architecture](docs/architecture.md)
 - [Interface with the other robots](docs/external-interface.md)
+- [Field test: fleet link & arbiter](docs/field-test-fleet-link.md)
 - [Team, roles and milestones](docs/team.md)
 - [Hardware and wiring](docs/hardware.md)
 - [Deploying the code to the robot over SSH](docs/ssh-deployment.md)

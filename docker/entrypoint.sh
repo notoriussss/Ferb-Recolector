@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Sources ROS 2, builds the workspace mounted at /ws (incremental) and runs the command.
 set -e
-source /opt/ros/jazzy/setup.bash
+source /opt/ros/lyrical/setup.bash
 
 if [ -d /ws/src ] && [ "${SKIP_BUILD:-0}" != "1" ]; then
   echo "[entrypoint] colcon build..."

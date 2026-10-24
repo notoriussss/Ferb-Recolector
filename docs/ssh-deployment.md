@@ -9,7 +9,7 @@ In the examples the Pi is called `phineas` and the user is `ucab`; replace them 
 
 ## Phase 0. Pi ready for SSH access
 
-1. With **Raspberry Pi Imager**, flash **Ubuntu Server 24.04 LTS (64-bit)** to the microSD.
+1. With **Raspberry Pi Imager**, flash **Ubuntu Server 26.04 LTS (64-bit)** to the microSD.
    In the options (⚙):
    - hostname: `phineas`
    - username and password: `ucab` / (whatever you like)
@@ -48,10 +48,10 @@ In the examples the Pi is called `phineas` and the user is `ucab`; replace them 
 
 **Done when:** `ssh phineas` logs in without asking for a password.
 
-## Phase 1. Install ROS 2 Jazzy on the Pi (native)
+## Phase 1. Install ROS 2 Lyrical on the Pi (native)
 
 On the Pi it is installed natively (no Docker): less memory and direct access to the camera and GPIO.
-These are the official ROS 2 Jazzy steps for Ubuntu 24.04 (arm64), base version without desktop:
+These are the official ROS 2 Lyrical steps for Ubuntu 26.04 (arm64), base version without desktop:
 
 ```bash
 ssh phineas
@@ -60,13 +60,13 @@ sudo add-apt-repository -y universe
 export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F\" '{print $4}')
 curl -L -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo $VERSION_CODENAME)_all.deb"
 sudo dpkg -i /tmp/ros2-apt-source.deb
-sudo apt update && sudo apt install -y ros-jazzy-ros-base python3-colcon-common-extensions \
+sudo apt update && sudo apt install -y ros-lyrical-ros-base python3-colcon-common-extensions \
     python3-rosdep python3-opencv python3-numpy v4l-utils
 sudo rosdep init && rosdep update
-echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
+echo "source /opt/ros/lyrical/setup.bash" >> ~/.bashrc
 ```
 
-> If the official steps change, the ROS 2 Jazzy guide takes precedence
+> If the official steps change, the ROS 2 Lyrical guide takes precedence
 > (docs.ros.org → Installation → Ubuntu deb packages). Once role 1 fills in
 > `scripts/setup_pi.sh`, these commands move into that script.
 

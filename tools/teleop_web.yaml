@@ -40,11 +40,15 @@ camera:
   jpeg_quality: 70
   vflip: true
   hflip: true
+  # Part of the camera id that identifies the CSI port of the OV5647 (picamera2 only).
+  picamera_id_hint: i2c@80000
   target_colors: [yellow, red]
   # Colours of the delivery line: the robot carries picked cubes there.
   zone_colors: [green, blue]
   # A blob of those colours counts as the line if it is larger than this area (px).
   zone_min_area_px: 300
+  # ...and it is at least this many times longer than wide, so a green/blue cube is not the line.
+  zone_min_elongation: 3.0
   # Cubes closer than this (px) to the line are already delivered and are not picked up again.
   zone_ignore_margin_px: 25
 
@@ -81,6 +85,29 @@ auto:
   deliver_push_s: 0.5
   deliver_backup_s: 0.8
   deliver_turn_s: 2.0
+  # A cube counts as at the scoop when its bottom edge passes this image row (px).
+  scoop_arrive_v_px: 445
+  # Catch / drop only start if the bearing is within align_tolerance_rad times this.
+  catch_align_factor: 1.4
+  # Roaming without a target: drive forward roam_forward_s out of every roam_period_s,
+  # turn to scan the rest.
+  roam_period_s: 3.0
+  roam_forward_s: 1.3
+  # Largest sideways correction while driving to a target (0-1).
+  steer_limit: 0.7
+  # Slowest approach speed, as a fraction of forward_speed.
+  min_speed_fraction: 0.35
+  # Smallest slow-down span (m), avoids dividing by a near-zero distance.
+  min_slow_span_m: 0.05
+
+# Cube filter of this tool: looser than the ROS cube_detector (src/vision), because the
+# scoop may be in view and the camera is not calibrated as tightly.
+detection:
+  min_area_px: 60
+  min_size_ratio: 0.15
+  max_size_ratio: 6.0
+  ignore_touching_bottom: false
+  max_distance_m: 3.0
 
 server:
   host: 0.0.0.0

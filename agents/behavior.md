@@ -1,6 +1,6 @@
 # Guide: behaviour
 
-**Owner:** role 3 · **Files:** `src/mobile_base/mobile_base/{behavior_fsm,obstacle_guard}.py`, `src/recolector_interfaces/`, `docs/architecture.md`, `docs/external-interface.md`
+**Owner:** role 3 · **Files:** `src/mobile_base/mobile_base/{behavior_fsm,obstacle_guard,fleet_link,approach,fleet,peer_avoidance,speed_limits,states,topics}.py`, `src/recolector_interfaces/`, `docs/architecture.md`, `docs/external-interface.md`
 
 ## What you need to know
 
@@ -11,3 +11,4 @@
 - The scoop carries one cube at a time.
 - The other robots belong to other teams; whatever is agreed with them goes in `docs/external-interface.md`.
 - It is best to write the state machine as pure logic without `rclpy`, so it can be tested with `pytest`.
+- A new parameter is a dataclass field plus a line in `config/collector.yaml` (see `recolector_common/params.py`); a new topic name goes in `topics.py` and a new state in `states.py`.

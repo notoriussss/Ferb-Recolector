@@ -1,9 +1,11 @@
-"""Vision only on the real robot: camera, detector and web viewer. Does not move the robot.
+"""
+Vision only on the real robot: camera, detector and web viewer. Does not move
+the robot.
 
 Useful to validate colour detection on the Pi before letting the robot move.
 
-  ros2 launch bringup vision.launch.py            # viewer at http://<pi-ip>:8080
-  ros2 launch bringup vision.launch.py device:=1  # another camera (/dev/video1)
+  ros2 launch bringup vision.launch.py            # http://<pi-ip>:8080
+  ros2 launch bringup vision.launch.py device:=1  # camera /dev/video1
 """
 
 import os
@@ -15,28 +17,52 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
+PACKAGE_VISION = "vision"
+VISION_CONFIG_FILE = "hsv_ranges.yaml"
+CONFIG_DIR = "config"
+
+DEFAULT_DEVICE = "0"
+DEFAULT_PORT = "8080"
+
+
+def _node(executable: str, parameters: list) -> Node:
+    """
+    A vision node that logs to the screen.
+    """
+    return Node(
+        package=PACKAGE_VISION,
+        executable=executable,
+        parameters=parameters,
+        output="screen",
+    )
+
 
 def generate_launch_description():
-    cfg = os.path.join(get_package_share_directory("vision"), "config", "hsv_ranges.yaml")
+    """
+    Declare the launch arguments and the three vision nodes.
+    """
+    share = get_package_share_directory(PACKAGE_VISION)
+    cfg = os.path.join(share, CONFIG_DIR, VISION_CONFIG_FILE)
     return LaunchDescription(
         [
-            DeclareLaunchArgument("device", default_value="0"),
-            DeclareLaunchArgument("port", default_value="8080"),
-            Node(
-                package="vision",
-                executable="camera_node",
-                parameters=[
+            DeclareLaunchArgument("device", default_value=DEFAULT_DEVICE),
+            DeclareLaunchArgument("port", default_value=DEFAULT_PORT),
+            _node(
+                "camera_node",
+                [
                     cfg,
-                    {"device": ParameterValue(LaunchConfiguration("device"), value_type=str)},
+                    {
+                        "device": ParameterValue(
+                            LaunchConfiguration("device"),
+                            value_type=str,
+                        )
+                    },
                 ],
-                output="screen",
             ),
-            Node(package="vision", executable="cube_detector", parameters=[cfg], output="screen"),
-            Node(
-                package="vision",
-                executable="web_viewer",
-                parameters=[cfg, {"port": LaunchConfiguration("port")}],
-                output="screen",
+            _node("cube_detector", [cfg]),
+            _node(
+                "web_viewer",
+                [cfg, {"port": LaunchConfiguration("port")}],
             ),
         ]
     )

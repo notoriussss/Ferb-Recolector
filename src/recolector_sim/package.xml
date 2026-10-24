@@ -12,6 +12,7 @@
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>mobile_base</exec_depend>
+  <exec_depend>recolector_common</exec_depend>
   <exec_depend>vision</exec_depend>
 
   <test_depend>python3-pytest</test_depend>

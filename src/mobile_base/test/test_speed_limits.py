@@ -1,4 +1,6 @@
-"""Tests: forward limit based on the ultrasonic sensor."""
+"""
+Tests: forward limit based on the ultrasonic sensor.
+"""
 
 from mobile_base.speed_limits import GuardParams, limit_forward
 

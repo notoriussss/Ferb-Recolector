@@ -1,12 +1,22 @@
-"""Tests: state machine transitions (for now SEARCH / APPROACH / ARRIVED)."""
+"""
+Tests: state machine transitions (for now SEARCH / APPROACH / ARRIVED).
+"""
 
 import pytest
 
-from mobile_base.approach import ApproachController, ApproachParams, Command, Cube, State
+from mobile_base.approach import (
+    ApproachController,
+    ApproachParams,
+    Command,
+    Cube,
+    State,
+)
 
 
 def ctrl(**kw):
-    return ApproachController(ApproachParams(target_colors=["red", "orange"], **kw))
+    return ApproachController(
+        ApproachParams(target_colors=["red", "orange"], **kw)
+    )
 
 
 def test_searches_turning_when_nothing_seen():
@@ -24,7 +34,14 @@ def test_ignores_colors_not_in_target():
 
 def test_picks_nearest_target_cube():
     c = ctrl()
-    c.update([Cube("red", 0.0, 0.9), Cube("green", 0.0, 0.2), Cube("orange", 0.1, 0.4)], 0.0)
+    c.update(
+        [
+            Cube("red", 0.0, 0.9),
+            Cube("green", 0.0, 0.2),
+            Cube("orange", 0.1, 0.4),
+        ],
+        0.0,
+    )
     assert c.state == State.APPROACH
     assert c.target == Cube("orange", 0.1, 0.4)
 

@@ -9,7 +9,10 @@ setup(
     version="0.0.0",
     packages=find_packages(exclude=["test"]),
     data_files=[
-        ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
+        (
+            "share/ament_index/resource_index/packages",
+            ["resource/" + package_name],
+        ),
         ("share/" + package_name, ["package.xml"]),
         ("share/" + package_name + "/config", glob("config/*.yaml")),
     ],
@@ -29,6 +32,7 @@ setup(
             "scoop_driver = mobile_base.scoop_driver:main",
             "color_sensor = mobile_base.color_sensor:main",
             "behavior_fsm = mobile_base.behavior_fsm:main",
+            "fleet_link = mobile_base.fleet_link:main",
         ],
     },
 )
