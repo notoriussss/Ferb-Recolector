@@ -15,8 +15,6 @@ from mobile_base.fleet import (
     ZoneClient,
     to_fleet_state,
 )
-from mobile_base.node_utils import now_s, spin_node
-from mobile_base.params import declare_params, read_params
 from mobile_base.states import State
 from mobile_base.topics import (
     DEFAULT_QOS_DEPTH,
@@ -34,6 +32,8 @@ from mobile_base.topics import (
 )
 from multirobot_interfaces.msg import RobotState
 from multirobot_interfaces.srv import ReleaseZone, RequestZone
+from recolector_common.node_utils import now_s, spin_node
+from recolector_common.params import declare_params, read_params
 
 NODE_NAME = "fleet_link"
 
@@ -55,6 +55,9 @@ class FleetLinkNode(Node):
     """
 
     def __init__(self):
+        """
+        Declare the parameters and create the fleet interfaces.
+        """
         super().__init__(NODE_NAME)
         declare_params(self, FleetLinkParams())
         params = read_params(self, FleetLinkParams())
