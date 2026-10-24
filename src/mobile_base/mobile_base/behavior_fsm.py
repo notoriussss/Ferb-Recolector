@@ -1,19 +1,19 @@
-"""Nodo behavior_fsm: máquina de estados del recolector (buscar, acercarse, atrapar,
-llevar al cuadrado, soltar) y conteo de cubos entregados.
+"""behavior_fsm node: the collector's state machine (search, approach, catch,
+carry to the square, release) and count of delivered cubes.
 
-Por ahora solo hace BUSCAR -> ACERCARSE -> LLEGUE (ver approach.py): gira hasta ver un cubo
-de los colores objetivo, se acerca y se detiene a `stop_distance_m`. Publica cmd_vel_raw
-(pasa por obstacle_guard) y behavior/state.
+For now it only does SEARCH -> APPROACH -> ARRIVED (see approach.py): it turns until it sees a
+cube of the target colours, approaches it and stops at `stop_distance_m`. Publishes cmd_vel_raw
+(goes through obstacle_guard) and behavior/state.
 
-Control manual: si llega cmd_vel_teleop (WASD desde web_viewer), se pasa tal cual a
-cmd_vel_raw y el estado es MANUAL, aunque el comportamiento esté en pausa. Cuando deja de
-llegar por `teleop_timeout_s`, vuelve el comportamiento automático.
+Manual control: if cmd_vel_teleop arrives (WASD from web_viewer), it is passed as-is to
+cmd_vel_raw and the state is MANUAL, even when the behaviour is paused. When it stops
+arriving for `teleop_timeout_s`, automatic behaviour resumes.
 
-Parámetros que se pueden cambiar en caliente (por ejemplo desde web_viewer):
+Parameters that can be changed at runtime (for example from web_viewer):
   enabled        true / false
-  target_colors  lista de colores, p. ej. ["rojo", "naranja"]
+  target_colors  list of colours, e.g. ["red", "orange"]
 
-TODO (rol 3): ATRAPAR, LLEVAR, SOLTAR y el conteo cuando exista la pala.
+TODO (role 3): CATCH, CARRY, RELEASE and the count once the scoop exists.
 """
 
 import json
@@ -69,7 +69,7 @@ class BehaviorFsmNode(Node):
         self.create_subscription(CubeDetectionArray, "cubes", self._on_cubes, 10)
         self.create_subscription(Twist, "cmd_vel_teleop", self._on_teleop, 10)
         self.create_timer(1.0 / self.get_parameter("control_rate_hz").value, self._tick)
-        self.get_logger().info(f"colores objetivo: {self._ctrl.params.target_colors}")
+        self.get_logger().info(f"target colours: {self._ctrl.params.target_colors}")
 
     def _now_s(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
@@ -83,15 +83,15 @@ class BehaviorFsmNode(Node):
     def _validate_params(self, params):
         for p in params:
             if p.name in _NUMERIC_PARAMS and p.value < 0:
-                return SetParametersResult(successful=False, reason=f"{p.name} no puede ser < 0")
+                return SetParametersResult(successful=False, reason=f"{p.name} cannot be < 0")
         return SetParametersResult(successful=True)
 
     def _on_params_changed(self, _params):
         self._ctrl.params = self._read_params()
         self._ctrl.enabled = self.get_parameter("enabled").value
         self.get_logger().info(
-            f"enabled={self._ctrl.enabled} colores objetivo={self._ctrl.params.target_colors} "
-            f"parar a {self._ctrl.params.stop_distance_m:.2f} m"
+            f"enabled={self._ctrl.enabled} target colours={self._ctrl.params.target_colors} "
+            f"stop at {self._ctrl.params.stop_distance_m:.2f} m"
         )
 
     def _on_cubes(self, msg: CubeDetectionArray):
@@ -113,7 +113,7 @@ class BehaviorFsmNode(Node):
             or now - self._cubes_stamp_s > self.get_parameter("cubes_timeout_s").value
         )
         if stale:
-            # sin visión no se mueve
+            # no vision, no movement
             cmd = None
             self._ctrl.target = None
         else:
@@ -132,7 +132,7 @@ class BehaviorFsmNode(Node):
         if manual:
             state = "MANUAL"
         else:
-            state = "SIN_CAMARA" if stale else self._ctrl.state.value
+            state = "NO_CAMERA" if stale else self._ctrl.state.value
         target = self._ctrl.target
         info = {
             "state": state,
@@ -154,7 +154,7 @@ class BehaviorFsmNode(Node):
         }
         self._pub_state.publish(String(data=json.dumps(info)))
         if state != self._last_state:
-            self.get_logger().info(f"estado: {state}")
+            self.get_logger().info(f"state: {state}")
             self._last_state = state
 
 
