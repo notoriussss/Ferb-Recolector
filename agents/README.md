@@ -1,6 +1,6 @@
 # agents/
 
-Short guides so an AI assistant (or someone new) can understand an area without reading the whole repo. `AGENTS.md` at the root has the general rules.
+Short guides so an AI assistant (or someone new) can understand an area without reading the whole repo. `AGENTS.md` at the root has the general rules and `docs/code-style.md` the code style (constants, multi-line layout, docstrings, modularity).
 
 | File | Area | Owner |
 |---|---|---|
