@@ -1,6 +1,6 @@
-"""Conversión entre sensor_msgs/Image y arreglos de OpenCV, sin cv_bridge.
+"""Conversion between sensor_msgs/Image and OpenCV arrays, without cv_bridge.
 
-Solo maneja las codificaciones que usamos: bgr8, rgb8, bgra8, rgba8 y mono8.
+Only handles the encodings we use: bgr8, rgb8, bgra8, rgba8 and mono8.
 """
 
 import numpy as np
@@ -10,10 +10,10 @@ _CHANNELS = {"bgr8": 3, "rgb8": 3, "bgra8": 4, "rgba8": 4, "mono8": 1}
 
 
 def image_to_bgr(msg: Image) -> np.ndarray:
-    """sensor_msgs/Image -> arreglo BGR (alto, ancho, 3) de uint8."""
+    """sensor_msgs/Image -> BGR uint8 array (height, width, 3)."""
     enc = msg.encoding.lower()
     if enc not in _CHANNELS:
-        raise ValueError(f"codificación no soportada: {msg.encoding}")
+        raise ValueError(f"unsupported encoding: {msg.encoding}")
     ch = _CHANNELS[enc]
     row = np.frombuffer(bytes(msg.data), dtype=np.uint8).reshape(msg.height, msg.step)
     img = row[:, : msg.width * ch].reshape(msg.height, msg.width, ch)
@@ -29,7 +29,7 @@ def image_to_bgr(msg: Image) -> np.ndarray:
 
 
 def bgr_to_image(bgr: np.ndarray, header=None) -> Image:
-    """Arreglo BGR de uint8 -> sensor_msgs/Image (bgr8)."""
+    """BGR uint8 array -> sensor_msgs/Image (bgr8)."""
     msg = Image()
     if header is not None:
         msg.header = header
