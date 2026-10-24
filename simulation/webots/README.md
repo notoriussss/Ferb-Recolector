@@ -1,87 +1,87 @@
-# Simulación de los recolectores en Webots
+# Collector simulation in Webots
 
-Mundo de Webots con la pista de UCAB Robótica, los 14 cubos y los dos recolectores (Phineas y Ferb) modelados según el plan. Sirve para probar movimientos, sensores y lógica antes de tener el robot armado.
+Webots world with the UCAB Robotics track, the 14 cubes and the two collectors (Phineas and Ferb) modelled according to the plan. It is used to test movements, sensors and logic before the robot is built.
 
-Probado con **Webots R2025a**: carga sin errores, las ruedas mecanum avanzan, van de lado y giran, la pala empuja y retiene un cubo, y los sensores responden.
+Tested with **Webots R2025a**: it loads without errors, the mecanum wheels drive forward, sideways and rotate, the scoop pushes and holds a cube, and the sensors respond.
 
-## Contenido
+## Contents
 
 ```
 webots-recolector/
-├── worlds/pista_ucab.wbt              mundo: mesa, tablero, línea, cuadrado, cubos y 2 robots
-├── worlds/textures/pista_ucab.png      línea negra sacada de la foto de la pista (rectificada)
-├── protos/RecolectorUCAB.proto         el robot (chasis, ruedas, pala y sensores)
-├── protos/CuboMadera.proto             cubo de madera de 2,5 cm
-├── controllers/recolector_teleop/      control por teclado para probar el modelo
-└── vista_cenital.png                   captura del mundo desde arriba
+├── worlds/pista_ucab.wbt              world: table, board, line, square, cubes and 2 robots
+├── worlds/textures/pista_ucab.png      black line taken from the track photo (rectified)
+├── protos/RecolectorUCAB.proto         the robot (chassis, wheels, scoop and sensors)
+├── protos/CuboMadera.proto             2.5 cm wooden cube
+├── controllers/recolector_teleop/      keyboard control to test the model
+└── vista_cenital.png                   top-down capture of the world
 ```
 
-## Cómo abrirlo
+## How to open it
 
-1. Instala Webots R2025a desde https://cyberbotics.com (Windows, Linux o macOS).
-2. Instala Python 3 si no lo tienes. Webots lo usa para los controladores; en Windows, revisa en *Tools → Preferences → Python command* que apunte a tu `python`.
-3. Abre `worlds/pista_ucab.wbt` con *File → Open World*.
-4. Dale a ▶ (play). Haz clic en la vista 3D y usa el teclado.
+1. Install Webots R2025a from https://cyberbotics.com (Windows, Linux or macOS).
+2. Install Python 3 if you do not have it. Webots uses it for the controllers; on Windows, check in *Tools → Preferences → Python command* that it points to your `python`.
+3. Open `worlds/pista_ucab.wbt` with *File → Open World*.
+4. Press ▶ (play). Click on the 3D view and use the keyboard.
 
-| Tecla | Acción |
+| Key | Action |
 |---|---|
-| W / S | avanzar / retroceder |
-| A / D | moverse de lado (izquierda / derecha) |
-| Q / E | girar a la izquierda / derecha |
-| P | subir / bajar la pala |
-| + / − | más / menos velocidad |
+| W / S | forward / backward |
+| A / D | move sideways (left / right) |
+| Q / E | rotate left / right |
+| P | raise / lower the scoop |
+| + / − | more / less speed |
 
-Los dos robots escuchan el mismo teclado. Para mover solo uno, cambia el campo `controller` del otro a `<none>` en el árbol de escena. En la consola de Webots, cada robot imprime cada medio segundo: si ve línea negra, la distancia del ultrasonido, si tiene un cubo en la pala, de qué color es y si es de sus colores.
+Both robots listen to the same keyboard. To drive only one, set the other's `controller` field to `<none>` in the scene tree. In the Webots console, each robot prints every half second: whether it sees the black line, the ultrasonic distance, whether it has a cube in the scoop, its colour and whether it is one of its colours.
 
-## Qué tan fiel es al robot real
+## How faithful it is to the real robot
 
-### Datos del fabricante o de las fotos
-- **Chasis Hiwonder mecanum:** 186 × 161 mm, ruedas de 65 mm, motores TT 1:120 **sin encoder** (el modelo no tiene sensores de posición en las ruedas, igual que el real).
-- **Velocidad:** ~100 rpm por motor (TT 1:120 a ~6 V) y límite del 70 % por la batería 2S → ~0,24 m/s como máximo.
-- **Ruedas mecanum:** simuladas con fricción direccional a 45° (la misma técnica del KUKA youBot de Webots). Patinan algo al girar, como las reales.
-- **Pista:** la línea negra se sacó de la foto rectificando la perspectiva. El ancho de 19 mm coincide con cinta aislante.
-- **Reparto de colores del plan:** Phineas `rojo,naranja,amarillo` y Ferb `verde,azul,morado`, pasados en `controllerArgs`.
+### Manufacturer data or from the photos
+- **Hiwonder mecanum chassis:** 186 × 161 mm, 65 mm wheels, TT 1:120 motors **without encoders** (the model has no position sensors on the wheels, just like the real one).
+- **Speed:** ~100 rpm per motor (TT 1:120 at ~6 V) and a 70 % limit because of the 2S battery → ~0.24 m/s at most.
+- **Mecanum wheels:** simulated with directional friction at 45° (the same technique as the Webots KUKA youBot). They slip somewhat when rotating, like the real ones.
+- **Track:** the black line was taken from the photo by rectifying the perspective. The 19 mm width matches electrical tape.
+- **Colour split from the plan:** Phineas `--colors=red,orange,yellow` and Ferb `--colors=green,blue,purple`, passed in `controllerArgs`.
 
-### Estimados (medir y ajustar)
-| Medida | Valor en el modelo | Dónde se cambia |
+### Estimates (measure and adjust)
+| Measurement | Value in the model | Where to change it |
 |---|---|---|
-| Tablero | 1,93 × 1,22 m | `PISTA` en el `.wbt` (y la textura) |
-| Cuadrado de entrega | ~24 × 24 cm | sale de la textura |
-| Cubos | 2,5 cm, 9,4 g | `CuboMadera.proto` |
-| Masa del robot | ~0,89 kg en total | `masaCuerpo` en el robot |
-| Torque de los TT | 0,15 N·m | `torqueMaxMotor` |
-| Pala | U de 32 mm, a 2,5 mm del piso | `RecolectorUCAB.proto`, sección "Pala" |
-| Cámara | 24° hacia abajo, a 11 cm de altura | `RecolectorUCAB.proto`, `Camera "camara"` |
+| Board | 1.93 × 1.22 m | `PISTA` in the `.wbt` (and the texture) |
+| Delivery square | ~24 × 24 cm | comes from the texture |
+| Cubes | 2.5 cm, 9.4 g | `CuboMadera.proto` |
+| Robot mass | ~0.89 kg in total | `masaCuerpo` (body mass) on the robot |
+| TT torque | 0.15 N·m | `torqueMaxMotor` |
+| Scoop | 32 mm U, 2.5 mm above the floor | `RecolectorUCAB.proto`, "Pala" (scoop) section |
+| Camera | 24° downwards, 11 cm high | `RecolectorUCAB.proto`, `Camera "camara"` |
 
-Las medidas del tablero salen de comparar el ancho de la cinta en las dos direcciones de la foto. Si el tablero real mide otra cosa, avísame y ajusto la textura.
+The board measurements come from comparing the tape width in both directions of the photo. If the real board measures something else, let me know and I will adjust the texture.
 
-## Dispositivos del robot
+## Robot devices
 
-Los nombres son los que usará el código, en Webots y después en ROS 2.
+These names (Spanish, kept as is) are the ones the code uses, in Webots and later in ROS 2.
 
-| Nombre | Pieza real | Qué devuelve |
+| Name | Real part | What it returns |
 |---|---|---|
-| `motor_fl`, `motor_fr`, `motor_rl`, `motor_rr` | motores TT por el HAT Cokoino | se controlan por velocidad (rad/s) |
-| `servo_pala` | SG90 | posición: 0 = abajo, −0,7 rad = arriba |
-| `camara` | OV5647, 640×480, ~54° | imagen |
-| `linea_fl`, `linea_fr`, `linea_rl`, `linea_rr` | TCRT5000 | ~240 en blanco, 0–30 en la línea negra |
-| `ultrasonido` | HC-SR04 | distancia en metros (0,02 a 4) |
-| `ir_pala` | FC-51 | 1 si hay cubo en la pala, 0 si no |
-| `color_pala` | TCS34725 | imagen de 4×4 del cubo (promediar para sacar el RGB) |
-| `acelerometro`, `giroscopio` | MPU6050 | m/s² y rad/s; no hay brújula, el rumbo se integra y deriva |
+| `motor_fl`, `motor_fr`, `motor_rl`, `motor_rr` | TT motors through the Cokoino HAT | velocity controlled (rad/s) |
+| `servo_pala` (scoop servo) | SG90 | position: 0 = down, −0.7 rad = up |
+| `camara` (camera) | OV5647, 640×480, ~54° | image |
+| `linea_fl`, `linea_fr`, `linea_rl`, `linea_rr` (line sensors) | TCRT5000 | ~240 on white, 0–30 on the black line |
+| `ultrasonido` (ultrasonic) | HC-SR04 | distance in metres (0.02 to 4) |
+| `ir_pala` (scoop IR) | FC-51 | 1 if there is a cube in the scoop, 0 otherwise |
+| `color_pala` (scoop colour) | TCS34725 | 4×4 image of the cube (average it to get the RGB) |
+| `acelerometro`, `giroscopio` (accelerometer, gyroscope) | MPU6050 | m/s² and rad/s; there is no compass, the heading is integrated and drifts |
 
-Arriba de cada robot hay un marcador ArUco (DICT_4X4_50: Phineas id 1, Ferb id 2), y al lado del cuadrado hay otro (id 10). El marcador del cuadrado depende de que las reglas lo permitan.
+On top of each robot there is an ArUco marker (DICT_4X4_50: Phineas id 1, Ferb id 2), and next to the square there is another (id 10). The square's marker depends on the rules allowing it.
 
-## Lo que el simulador no reproduce bien
-- El patinaje exacto de las mecanum sobre el tablero real.
-- Los colores con la luz del salón: los rangos HSV se calibran con los cubos reales.
-- La caída de voltaje de la batería y el calentamiento de los motores.
-- El robot de garra (Perry) no está modelado; el cuadrado queda libre.
+## What the simulator does not reproduce well
+- The exact slipping of the mecanum wheels on the real board.
+- The colours under the room's lighting: the HSV ranges are calibrated with the real cubes.
+- The battery voltage drop and motor heating.
+- The claw robot (Perry) is not modelled; the square stays free.
 
-## Conexión con ROS 2
-`worlds/pista_ucab_ros.wbt` es el mismo mundo con Phineas en `<extern>` y Ferb quieto. En lugar de `webots_ros2` se usa un puente propio y pequeño, `webots_bridge` (`src/recolector_sim`): publica `image_raw` y `range`, y mueve las ruedas con `cmd_vel`, igual que los nodos del robot real. Así, lo que funciona en la simulación pasa a la Pi 5 cambiando solo los nodos que hablan con el hardware.
+## Connection with ROS 2
+`worlds/pista_ucab_ros.wbt` is the same world with Phineas on `<extern>` and Ferb idle. Instead of `webots_ros2`, a small custom bridge is used, `webots_bridge` (`src/recolector_sim`): it publishes `image_raw` and `range`, and drives the wheels from `cmd_vel`, just like the real robot's nodes. That way, what works in simulation moves to the Pi 5 by changing only the nodes that talk to the hardware.
 
-- Todo en Docker: `docker compose up sim` (Webots sin ventana) y abrir http://localhost:8080.
-- Webots en Windows y nodos en Docker: abrir `pista_ucab_ros.wbt`, darle ▶ y `docker compose up sim-externo`.
+- Everything in Docker: `docker compose up sim` (headless Webots) and open http://localhost:8080.
+- Webots on Windows and nodes in Docker: open `pista_ucab_ros.wbt`, press ▶ and run `docker compose up sim-external`.
 
-Ver `docker/README.md`. Si cambias `pista_ucab.wbt`, corre `python3 tools/generar_mundo_ros.py`.
+See `docker/README.md`. If you change `pista_ucab.wbt`, run `python3 tools/generate_ros_world.py`.
