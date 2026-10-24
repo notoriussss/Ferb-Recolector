@@ -1,12 +1,12 @@
-"""Lanza todos los nodos del recolector en la Raspberry Pi.
+"""Launches all collector nodes on the Raspberry Pi.
 
-Por ahora: cámara, detector, visor web, behavior_fsm (acercarse a un cubo) y obstacle_guard.
-Por seguridad, behavior_fsm arranca en pausa: se inicia con el botón "Iniciar" del visor
-web o con enabled:=true.
+For now: camera, detector, web viewer, behavior_fsm (approach a cube) and obstacle_guard.
+For safety, behavior_fsm starts paused: start it with the "Start" button in the web viewer
+or with enabled:=true.
 
-TODO (rol 1 y 4): agregar motor_driver, ultrasonic, line_sensors, scoop_driver y
-color_sensor cuando estén implementados. Sin motor_driver el robot real no se mueve; sin
-ultrasonic, obstacle_guard no deja avanzar.
+TODO (roles 1 and 4): add motor_driver, ultrasonic, line_sensors, scoop_driver and
+color_sensor once implemented. Without motor_driver the real robot does not move; without
+ultrasonic, obstacle_guard blocks forward motion.
 """
 
 import os
@@ -21,7 +21,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
     vision_cfg = os.path.join(get_package_share_directory("vision"), "config", "hsv_ranges.yaml")
-    base_cfg = os.path.join(get_package_share_directory("mobile_base"), "config", "recolector.yaml")
+    base_cfg = os.path.join(get_package_share_directory("mobile_base"), "config", "collector.yaml")
     return LaunchDescription(
         [
             DeclareLaunchArgument("device", default_value="0"),
