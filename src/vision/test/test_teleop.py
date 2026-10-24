@@ -1,4 +1,4 @@
-"""Pruebas: control manual del visor web (teclas → velocidades)."""
+"""Tests: web viewer manual control (keys -> velocities)."""
 
 import math
 
