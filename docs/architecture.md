@@ -108,9 +108,32 @@ Unless noted with a leading `/`, all names are local to the robot namespace (`/f
 - `recolector_interfaces/CubeDetectionArray`: the image `header` and `cubes[]`, from nearest to farthest.
 - `multirobot_interfaces`: Vendored from upstream `ucab-multirobot` (commit `09d0f16`). Defines `RobotState`, `RobotPose`, `CubeDetection`, `CubeDetectionArray`, `RequestZone`, and `ReleaseZone`.
 
+## Code layout
+
+Each node file only wires ROS to pure logic; the logic lives in modules without `rclpy`, with tests in `test/`. Shared names and helpers:
+
+| Package | Module | Responsibility |
+|---|---|---|
+| `recolector_common` | `params.py` | declare and read ROS parameters from a dataclass (field name = parameter name, optional `prefix`) |
+| `recolector_common` | `node_utils.py` | `now_s(node)` and `spin_node(factory)` |
+| `mobile_base` | `states.py` | `State` (local behaviour states) and `FleetState` (shared vocabulary) |
+| `mobile_base` | `topics.py` | topic and service names, QoS depths |
+| `mobile_base` | `approach.py` | SEARCH → APPROACH → ARRIVED controller |
+| `mobile_base` | `speed_limits.py` | ultrasonic forward limit |
+| `mobile_base` | `fleet.py` | state mapping, heartbeat, zone lease client |
+| `mobile_base` | `peer_avoidance.py` | peer collector avoidance and deadlock escape |
+| `mobile_base` | `kinematics.py`, `mathutil.py` | mecanum kinematics, `clamp` and `wrap_angle` |
+| `vision` | `hsv.py`, `camera_model.py` | HSV range parsing, pixel → floor geometry (no OpenCV) |
+| `vision` | `color_detection.py`, `drawing.py` | colour detector, debug-image drawing |
+| `vision` | `colors.py`, `topics.py` | colour names, topic names |
+| `vision` | `web_server.py`, `frame_buffer.py` | HTTP routes of the viewer (no `rclpy`), latest-frame buffer |
+| `tools/teleop_web_lib` | `autopilot.py`, `drive.py`, `motors.py`, ... | Auto mode state machine, control thread, motor drivers (see the package docstring) |
+
+Parameters of every node are declared from dataclasses: `ApproachParams`, `GuardParams`, `PeerAvoidanceParams`, `FleetLinkParams`, `CameraParams`, `DetectionFilter` and the node-level ones in each node file. Their defaults are the fallback; the real values are in the YAML.
+
 ## State machine
 
-**Implemented so far** (`mobile_base/approach.py`): `SEARCH` (turns) → `APPROACH` →
+**Implemented so far** (`mobile_base/approach.py`, states in `mobile_base/states.py`): `SEARCH` (turns) → `APPROACH` →
 `ARRIVED` (stops at `stop_distance_m` from the nearest cube of `target_colors`). Plus
 `PAUSED` when `enabled` is false and `NO_CAMERA` if no detections arrive.
 `MANUAL` while `cmd_vel_teleop` keeps arriving (WASD in the web viewer): it takes priority over everything
