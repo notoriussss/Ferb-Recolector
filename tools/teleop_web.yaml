@@ -1,32 +1,87 @@
-# Parámetros del control manual por navegador (tools/teleop_web.py).
-# Los pines salen de docs/hardware.md; mientras estén en null, los motores van en modo falso.
+# Parameters for the browser control and Auto mode (tools/teleop_web.py).
+# Pins come from docs/hardware.md; while they are null, the motors run in fake mode.
 
 motors:
-  # GPIO (BCM) de IN1 / IN2 de cada motor del HAT Cokoino. TODO medir.
-  fl_pins: [null, null]
-  fr_pins: [null, null]
-  rl_pins: [null, null]
-  rr_pins: [null, null]
-  # true si esa rueda gira al revés (se invierte aquí, no en el cableado).
-  fl_inverted: false
+  # "fusion_hat" (SunFounder Fusion HAT+, I2C 0x17) or "gpio" (Cokoino HAT with BCM pins).
+  driver: fusion_hat
+  # PWM channels (a, b) per wheel: M0=(11,10) M1=(9,8) M2=(6,7) M3=(4,5).
+  # Mapping deduced from observation (M0=FL, M1=FR, M2=RR, M3=RL). TODO confirm on the robot.
+  fusion_channels:
+    fl: [11, 10]
+    fr: [9, 8]
+    rr: [6, 7]
+    rl: [4, 5]
+  # GPIO (BCM) for IN1 / IN2 of each motor on the Cokoino CKK0018 HAT (2× DRV8833).
+  # M3=FL (DRV8833#2 A), M4=FR (DRV8833#2 B), M1=RL (DRV8833#1 A), M2=RR (DRV8833#1 B).
+  fl_pins: [24, 25]
+  fr_pins: [26, 16]
+  rl_pins: [17, 27]
+  rr_pins: [22, 23]
+  # nSLEEP pins of both DRV8833 (must be HIGH to enable the H-bridges).
+  nsleep_pins: [12, 13]
+  # true if that wheel spins backwards (inverted here, not in the wiring).
+  fl_inverted: true
   fr_inverted: false
-  rl_inverted: false
+  rl_inverted: true
   rr_inverted: false
-  pwm_frequency_hz: 1000
-  # Tope de ciclo de trabajo (0–1). Arrancar bajo y subir con las ruedas en el aire.
-  max_duty_ratio: 0.5
-  # Si no llega un comando en este tiempo, se frenan los motores.
+  pwm_frequency_hz: 200
+  # Duty cycle cap (0–1). Start low and raise it with the wheels off the ground.
+  max_duty_ratio: 0.9
+  # If no command arrives within this time, the motors brake.
   cmd_timeout_s: 0.5
 
 camera:
-  # "opencv" (webcam USB) o "picamera2" (módulo de cámara de la Pi).
-  backend: opencv
+  # "opencv" (USB webcam) or "picamera2" (Pi camera module).
+  backend: picamera2
   device_index: 0
   width_px: 640
   height_px: 480
   fps: 15
   jpeg_quality: 70
+  vflip: true
+  hflip: true
+  target_colors: [yellow, red]
+  # Colours of the delivery line: the robot carries picked cubes there.
+  zone_colors: [green, blue]
+  # A blob of those colours counts as the line if it is larger than this area (px).
+  zone_min_area_px: 300
+  # Cubes closer than this (px) to the line are already delivered and are not picked up again.
+  zone_ignore_margin_px: 25
+
+line_sensor:
+  # GPIO (BCM) of the bottom TCRT5000's DO output. null = no sensor (black line not seen).
+  # Power it from 3.3 V, not 5 V. TODO measure which pin it is wired to.
+  pin: null
+  # DO value over the black tape (the usual module gives 1 on black, 0 on white). TODO test.
+  black_value: 1
+
+auto:
+  enabled: true
+  # At ~16.5 cm the scoop hides the cube; at 18.5 cm (or the image bottom) the blind push starts.
+  stop_distance_m: 0.185
+  slow_down_distance_m: 0.45
+  forward_speed: 0.42
+  roam_forward_speed: 0.35
+  turn_speed: 0.38
+  search_turn_speed: 0.32
+  align_tolerance_rad: 0.22
+  lost_timeout_s: 0.6
+  # Longest time searching without seeing any cube before stopping for good.
+  no_cubes_stop_s: 7.0
+  # Time (s) driving straight blind at ~18.5 cm to push the cube into the scoop.
+  scoop_push_s: 0.65
+  # Black line: back up for this long, then turn for this long, then resume.
+  line_backup_s: 0.6
+  line_turn_s: 1.2
+  line_speed: 0.35
+  # Reaches the delivery line when it is this close or its lowest edge passes this row (px).
+  zone_stop_distance_m: 0.20
+  zone_arrive_v_px: 440
+  # Delivery: push blind, back up leaving the cube, and turn to look for the next one.
+  deliver_push_s: 0.5
+  deliver_backup_s: 0.8
+  deliver_turn_s: 2.0
 
 server:
-  host: 127.0.0.1
-  port: 8081  # 8080 lo usa web_viewer
+  host: 0.0.0.0
+  port: 8081  # 8080 is used by web_viewer
