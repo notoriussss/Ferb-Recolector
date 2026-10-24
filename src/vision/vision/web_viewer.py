@@ -14,6 +14,7 @@ docs/ssh-deployment.md).
 import json
 import threading
 import time
+from dataclasses import dataclass, field
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
 from std_msgs.msg import String
 
+from recolector_common.params import declare_params, read_params
 from recolector_interfaces.msg import CubeDetectionArray
 from vision.colors import COLOR_NAMES
 from vision.frame_buffer import FrameBuffer
@@ -96,6 +98,24 @@ def _param_msg(name: str, value) -> ParameterMsg:
     return ParameterMsg(name=name, value=param_value)
 
 
+@dataclass
+class WebViewerParams:
+    """
+    Parameters of the web viewer.
+
+    Field names double as ROS parameter names (see recolector_common.params).
+    """
+
+    host: str = DEFAULT_HOST
+    port: int = DEFAULT_PORT
+    max_fps_hz: float = DEFAULT_MAX_FPS_HZ
+    jpeg_quality: int = DEFAULT_JPEG_QUALITY
+    color_names: list[str] = field(default_factory=lambda: list(COLOR_NAMES))
+    behavior_node: str = DEFAULT_BEHAVIOR_NODE
+    teleop_max_linear_m_s: float = DEFAULT_TELEOP_MAX_LINEAR_M_S
+    teleop_max_angular_rad_s: float = DEFAULT_TELEOP_MAX_ANGULAR_RAD_S
+
+
 class WebViewerNode(Node):
     """
     Collects images, detections and behaviour state for the web page and
@@ -107,20 +127,9 @@ class WebViewerNode(Node):
         Declare the parameters and create the ROS interfaces.
         """
         super().__init__(NODE_NAME)
-        self.declare_parameter("host", DEFAULT_HOST)
-        self.declare_parameter("port", DEFAULT_PORT)
-        self.declare_parameter("max_fps_hz", DEFAULT_MAX_FPS_HZ)
-        self.declare_parameter("jpeg_quality", DEFAULT_JPEG_QUALITY)
-        self.declare_parameter("color_names", list(COLOR_NAMES))
-        self.declare_parameter("behavior_node", DEFAULT_BEHAVIOR_NODE)
-        self.declare_parameter(
-            "teleop_max_linear_m_s",
-            DEFAULT_TELEOP_MAX_LINEAR_M_S,
-        )
-        self.declare_parameter(
-            "teleop_max_angular_rad_s",
-            DEFAULT_TELEOP_MAX_ANGULAR_RAD_S,
-        )
+        declare_params(self, WebViewerParams())
+        self.params = read_params(self, WebViewerParams())
+        self.add_post_set_parameters_callback(self._on_params_changed)
 
         self.frames = FrameBuffer()
         self._lock = threading.Lock()
@@ -154,7 +163,7 @@ class WebViewerNode(Node):
             self._on_behavior,
             DEFAULT_QOS_DEPTH,
         )
-        behavior = self.get_parameter("behavior_node").value
+        behavior = self.params.behavior_node
         self._param_client = self.create_client(
             SetParameters,
             f"{behavior}/set_parameters",
@@ -165,16 +174,20 @@ class WebViewerNode(Node):
             DEFAULT_QOS_DEPTH,
         )
 
+    # ---------- parameters ----------
+    def _on_params_changed(self, _params):
+        """
+        Apply runtime parameter changes (fps cap, JPEG quality, limits...).
+        """
+        self.params = read_params(self, WebViewerParams())
+
     # ---------- ROS ----------
     def _encode(self, msg: Image):
         """
         JPEG-encode an image (rate limited) and hand it to the HTTP clients.
         """
         now = time.monotonic()
-        if (
-            now - self._last_frame_s
-            < 1.0 / self.get_parameter("max_fps_hz").value
-        ):
+        if now - self._last_frame_s < 1.0 / self.params.max_fps_hz:
             return
         self._update_fps(now)
         try:
@@ -185,7 +198,7 @@ class WebViewerNode(Node):
                 throttle_duration_sec=IMAGE_ERROR_THROTTLE_S,
             )
             return
-        quality = int(self.get_parameter("jpeg_quality").value)
+        quality = int(self.params.jpeg_quality)
         ok, jpeg = cv2.imencode(
             ".jpg",
             bgr,
@@ -262,7 +275,7 @@ class WebViewerNode(Node):
                 "cubes": list(self._cubes),
                 "behavior": self._behavior,
                 "fps": round(self._fps, FPS_DISPLAY_DECIMALS),
-                "color_names": list(self.get_parameter("color_names").value),
+                "color_names": list(self.params.color_names),
             }
 
     def teleop(self, data: dict) -> None:
@@ -270,8 +283,8 @@ class WebViewerNode(Node):
         Publish a manual-control command from the page's raw JSON.
         """
         limits = TeleopLimits(
-            self.get_parameter("teleop_max_linear_m_s").value,
-            self.get_parameter("teleop_max_angular_rad_s").value,
+            self.params.teleop_max_linear_m_s,
+            self.params.teleop_max_angular_rad_s,
         )
         twist = Twist()
         twist.linear.x, twist.linear.y, twist.angular.z = teleop_velocity(
@@ -321,8 +334,8 @@ def main(args=None):
     """
     rclpy.init(args=args)
     node = WebViewerNode()
-    host = node.get_parameter("host").value
-    port = node.get_parameter("port").value
+    host = node.params.host
+    port = node.params.port
     handler = make_handler(node, _read_index_html(), rclpy.ok)
     server = ThreadingHTTPServer((host, port), handler)
     server.daemon_threads = True
