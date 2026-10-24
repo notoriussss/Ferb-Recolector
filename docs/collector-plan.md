@@ -2,7 +2,7 @@
 
 **Project:** UCAB Robotics · Multi-robot system (2 collectors + 1 claw robot)
 **Plan author:** Samuel (with help from Claude)
-**Date:** 27/09/2026 · updated 04/10/2026
+**Date:** 27/09/2026 · updated 04/10/2026 · updated 24/10/2026 (Ubuntu 26.04, ROS 2 Lyrical, multirobot_interfaces adopted)
 **Status:** planning only, there is no code yet.
 **Web version:** https://claude.ai/artifact/PfiLGZ2g3D7FJgjf77hLHn
 
@@ -65,8 +65,7 @@ The two collectors are identical: same chassis, same electronics and **the same 
 
 ### How each robot knows which colours are its own
 1. **Configuration file:** each robot loads its colour list and HSV ranges from a YAML file (`phineas.yaml`, `ferb.yaml`). Both robots run the same code.
-2. **Announcement at startup:** each robot publishes its colours in the `reserved_colors` field of `/fleet/status`. The claw checks that the two splits do not overlap and that together they cover all 6 colours. If it finds an error, it warns before starting.
-3. **Handover:** if a collector stops sending its heartbeat for more than 10 s (it ran out of battery or switched off), the other collector takes over its colours (it sees them in the last `/fleet/status`), and starts collecting all of them. If the missing one comes back, each recovers its own split.
+2. **Update (2026-10-22):** the track rule changed: both collectors pick up **every colour except red**, and red cubes stay on the track. The colour split above is kept only as history.
 
 ### The scoop (same on both robots)
 - Scoop at the front with a U-shaped gap one cube wide (≈3 cm), so the cube does not slip out the sides when turning.
@@ -125,13 +124,13 @@ Two rules override everything else, in any state:
 ## 4. Communication and coexistence between the three robots
 
 ### Base software
-All three Pi 5 run Ubuntu 24.04 with ROS 2 Jazzy. If they are on the same Wi‑Fi network and use the same `ROS_DOMAIN_ID`, each robot's nodes find each other without a central server.
+All three Pi 5 run Ubuntu 26.04 with ROS 2 Lyrical (migrated on 2026-10-24 to match Phineas and Perry). If they are on the same Wi‑Fi network and use the same `ROS_DOMAIN_ID`, each robot's nodes find each other without a central server.
 
 ### Free network: phone hotspot
 - The three robots connect to a teammate's phone hotspot. Traffic between robots is local and uses almost no data.
 - **Risk:** some phones isolate connected devices or block multicast. In that case ROS 2 does not find the other robots. **This must be tested on day one.**
 - If it fails, there are three plan Bs:
-  1. Give each robot the list of the others' IPs with `ROS_STATIC_PEERS` (available in Jazzy), with fixed IPs.
+  1. Give each robot the list of the others' IPs with `ROS_STATIC_PEERS` (available in ROS 2), with fixed IPs.
   2. Use Zenoh as the ROS 2 communication layer.
   3. Have the claw robot's Pi create its own Wi‑Fi network (access point mode) and have the collectors connect to it. It costs nothing and does not depend on the phone's battery.
 
@@ -139,21 +138,26 @@ All three Pi 5 run Ubuntu 24.04 with ROS 2 Jazzy. If they are on the same Wi‑F
 
 ```mermaid
 flowchart LR
-  R1["Collector 1"] -- "/fleet/status" --> G["Claw robot<br/>(next to the square)"]
-  R2["Collector 2"] -- "/fleet/status" --> G
-  R1 <-- "/fleet/status" --> R2
-  R1 <-- "/fleet/delivery_lock (delivery turn)" --> R2
+  F["Ferb (us)"] -- "/zone/request, /zone/release" --> P["Perry (arm)<br/>zone_arbiter"]
+  H["Phineas"] -- "/zone/request, /zone/release" --> P
+  P -- "/zone/occupant (2 Hz)" --> F
+  P -- "/zone/occupant (2 Hz)" --> H
+  P -- "/ferb/pose, /phineas/pose" --> F
+  P -- "/ferb/pose, /phineas/pose" --> H
 ```
 
-### Messages (draft to agree with the other teams)
+### Messages (adopted from the other team)
 
-**Proposal, pending agreement with the other collector team.** Each robot runs under its own namespace (`/phineas/...`, `/ferb/...`) and only `/fleet/*` is shared. Transport: both robots on the same Wi‑Fi with the same `ROS_DOMAIN_ID`, and `ROS_STATIC_PEERS=<other robot's IP>` if the network blocks multicast. Bluetooth was ruled out.
+Phineas and Perry are already implemented in [alejandrovielma/ucab-multirobot](https://github.com/alejandrovielma/ucab-multirobot), so we adopt their interface as it is (`multirobot_interfaces`). The details and the implementation steps are in [tasks/fleet-link.md](tasks/fleet-link.md).
 
-| Message | Published by | Content | Rate |
-|---|---|---|---|
-| `/fleet/status` (`FleetStatus`) | All three | `robot_name`, `state` (SEARCH, APPROACH, CATCH, CARRY, DROP), `has_cube`, `delivered_count`, `reserved_colors` | 2 Hz (heartbeat) |
-| `/fleet/delivery_lock` (`DeliveryLock`) | Collectors | Delivery turn: `robot_name`, `action` (REQUEST / RELEASE), `stamp`. Expires after 30 s if nobody releases it | On each delivery |
-| Claw count (name to agree with the claw team) | Claw | Total delivered, total sorted and total per colour. If it does not match the collectors' `delivered_count`, there was a colour error | When it changes |
+| Name | Type | Purpose |
+|---|---|---|
+| `/zone/request`, `/zone/release` | services (`RequestZone`, `ReleaseZone`) | Delivery turn, arbitrated by Perry. 60 s lease; a release with `delivered=true` adds to the official count. |
+| `/zone/occupant` | `std_msgs/String`, 2 Hz | Who holds the zone (empty = free). It is also the heartbeat: if it is lost for 2 s, the robot stops. |
+| `/ferb/pose`, `/phineas/pose` | `RobotPose` | Poses from Perry's overhead camera, used to avoid the other collector. |
+| `/phineas/state`, `/ferb/state` | `RobotState` | Each collector's state. |
+
+Each robot runs under its own namespace (`/ferb`, `/phineas`). On a tie, Ferb yields.
 
 ### Rules to avoid crashing and sabotage
 1. **Each cube has an owner by its colour.** A robot never goes for a cube that is not one of its colours, so they never compete for cubes. If one of the other's cubes is in its way, it goes around it sideways (the mecanum wheels allow it) instead of pushing it.
@@ -165,7 +169,7 @@ flowchart LR
    - If it stays blocked for more than 5 s, it backs up.
 
    In a tie the same robot always yields (fixed priority), so they never both end up waiting.
-4. **Delivery turn.** Only one robot at a time at the delivery zone. The two collectors share a "lock" on `/fleet/delivery_lock`: the robot sends REQUEST and goes in only if the other one does not hold it, delivers and sends RELEASE on the way out. If it is not released within 30 s, the lock expires on its own. If both request at the same time, the same robot always yields. The waiting robot stays more than 30 cm from the zone so it does not block the entrance.
+4. **Delivery turn.** Only one robot at a time at the delivery zone. Perry hands out the turn through `/zone/request` and `/zone/release`: the robot goes in only while `/zone/occupant` names it, delivers, and releases on the way out. The lease expires on its own after 60 s. On a tie, Ferb yields. The waiting robot stays more than 30 cm from the zone so it does not block the entrance.
 5. **No sabotage.** No robot moves cubes of the other's colours, removes or pushes cubes already inside the square, or stands still on the way to it. When delivering, it pushes the cube just enough for it to end up inside, without dragging the ones already there.
 6. **If the network goes down,** the robot stops in less than 2 s and waits for it to come back. In addition, a person stays next to each robot's master switch.
 7. **Counting.** Each collector keeps its own count and the claw adds up the total. If the delivery count and the sorted count do not match, some cube ended up outside the square.
