@@ -19,5 +19,7 @@ setup(
     maintainer_email="TODO@ucab.edu.ve",
     description="Helpers shared by the collector packages.",
     license="MIT",
-    tests_require=["pytest"],
+    # colcon runs pytest when it finds it here (`tests_require` is gone from
+    # recent setuptools and is silently ignored).
+    extras_require={"test": ["pytest"]},
 )

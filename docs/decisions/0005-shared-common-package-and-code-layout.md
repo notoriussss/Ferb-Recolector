@@ -26,4 +26,5 @@ An audit of the code found three problems that made it hard to read and to chang
 - A parameter is named once. Adding one means adding a dataclass field and a YAML line.
 - `PeerAvoidance` moved from `fleet.py` to `peer_avoidance.py`: `obstacle_guard` and `fleet_link` each use a disjoint half of the old file. Its distance fields are now `peer_slow_distance_m` and `peer_stop_distance_m`, the same names as the YAML.
 - A new ROS package must be listed as an `exec_depend` by its users, and `rosdep install` picks it up from `src/`.
+- Every `ament_python` package declares `extras_require={"test": ["pytest"]}` in `setup.py` (and `python3-pytest` as `test_depend`). Do not use `tests_require`: recent setuptools drops it, colcon then does not see pytest and falls back to `unittest`, which finds no tests and exits with code 5 (this broke `colcon test` in CI).
 - `tools/teleop_web_lib/` still has its own small kinematics module: that tool works without ROS and uses normalised ratios, not rad/s. It is meant to disappear when `motor_driver` exists.

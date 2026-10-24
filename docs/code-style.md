@@ -199,4 +199,4 @@ Do not turn `D200` on: it asks one-line docstrings to fit on one line, the oppos
 1. Put the decision logic in a module without `rclpy` and test it.
 2. Add `topics.py` entries for new topic names and `states.py` entries for new states.
 3. Write the node as wiring: parameters from a dataclass, subscriptions that store, a timer that calls the logic and publishes.
-4. Add the entry point to `setup.py` and the node to the launch file. If a topic or message changed, update `docs/architecture.md` first.
+4. Add the entry point to `setup.py` and the node to the launch file. A new `ament_python` package declares `extras_require={"test": ["pytest"]}` (not `tests_require`) so `colcon test` runs pytest. If a topic or message changed, update `docs/architecture.md` first.

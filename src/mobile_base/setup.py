@@ -22,7 +22,9 @@ setup(
     maintainer_email="TODO@ucab.edu.ve",
     description="Collector mecanum base: motors, sensors, scoop and behaviour.",
     license="MIT",
-    tests_require=["pytest"],
+    # colcon runs pytest when it finds it here (`tests_require` is gone from
+    # recent setuptools and is silently ignored).
+    extras_require={"test": ["pytest"]},
     entry_points={
         "console_scripts": [
             "motor_driver = mobile_base.motor_driver:main",
