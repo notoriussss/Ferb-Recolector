@@ -30,7 +30,7 @@ recolector-ucab/
 ├── AGENTS.md                 rules for AI assistants (Claude, Copilot, Codex…)
 ├── CLAUDE.md                 points to AGENTS.md
 ├── agents/                   per-area guides for AI assistants and for reviewing PRs
-├── docs/                     architecture, external interface, team, hardware, plan and decisions
+├── docs/                     architecture, code style, external interface, team, hardware, plan and decisions
 ├── src/                      ROS 2 workspace (colcon)
 │   ├── recolector_interfaces/  custom messages
 │   ├── recolector_common/      helpers shared by the packages (ROS parameters, node boilerplate)
