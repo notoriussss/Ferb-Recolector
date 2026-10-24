@@ -32,6 +32,17 @@ This repo is a class project. Code files start empty, with a docstring and a `TO
 - Every physical parameter (pins, speeds, thresholds, times) goes in YAML, with the unit in the name (`cmd_timeout_s`).
 - Pure logic (kinematics, colour classification, state machine) goes in modules without `rclpy`, with tests in `test/`.
 - Hardware access goes behind a class with a fake version, so it can be tested on the laptop.
+- No magic numbers or strings in the code: a named constant (`UPPER_SNAKE_CASE`, with a comment giving the unit or why), or the YAML if it is tunable. Topic and service names live in `topics.py`, states in `states.py`. `ruff` enforces comparisons (PLR2004).
+- Parameters are declared once, as dataclass fields (`mobile_base/params.py`); the field name is the ROS parameter name. A node's default must equal the YAML value, or come from the same constant.
+- Docstrings: the quotes go on their own lines and the text sits at the same indentation, for every module, class and function (one-liners too):
+
+  ```python
+  def clamp(value, low, high):
+      """
+      Limit `value` to the closed interval [low, high].
+      """
+  ```
+- Style: 80 columns, one argument or item per line once a call or literal does not fit (end with a trailing comma). One responsibility per module and per function; `ruff` caps complexity at 10 (C901). If a node file grows past one screen of logic, move the pure part out.
 - Do not use Nav2, SLAM, Gazebo or MoveIt (course decision). RPi.GPIO does not work on the Pi 5.
 
 ## Robot safety
