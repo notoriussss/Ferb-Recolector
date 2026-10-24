@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Collector · control</title>
+<style>
+  body { margin: 0; font: 15px system-ui, sans-serif; background: #111; color: #eee;
+         display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; }
+  img { width: min(100%, 640px); aspect-ratio: 4 / 3; background: #222; border-radius: 8px; }
+  .keys { display: grid; grid-template-columns: repeat(3, 56px); gap: 6px; }
+  .k { height: 56px; border-radius: 8px; background: #2a2a2a; display: grid;
+       place-items: center; font-weight: 700; user-select: none; touch-action: none; }
+  .k.on { background: #2f7d32; }
+  .btn { padding: 10px 16px; border-radius: 8px; border: none; font: inherit; font-weight: 700;
+         cursor: pointer; background: #2a2a2a; color: #eee; }
+  .btn.on { background: #2f7d32; color: #fff; }
+  .row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; justify-content: center; }
+  #st { font-family: ui-monospace, monospace; color: #aaa; }
+  #st.off { color: #e57373; }
+  .hint { color: #888; }
+</style></head><body>
+<h2 style="margin:0">Collector</h2>
+<img id="cam" src="/stream.mjpg" alt="camera">
+<div class="row">
+  <div class="keys">
+    <div class="k" data-k="q">Q</div><div class="k" data-k="w">W</div>
+    <div class="k" data-k="e">E</div><div class="k" data-k="a">A</div>
+    <div class="k" data-k="s">S</div><div class="k" data-k="d">D</div>
+  </div>
+  <label>Speed <input id="spd" type="range" min="10" max="100" value="50">
+    <span id="spdv">50</span>%</label>
+  <button id="autoBtn" class="btn">Auto (P): OFF</button>
+  <button id="nextBtn" class="btn">Reset (R)</button>
+</div>
+<div id="st">connecting…</div>
+<div class="hint">
+  W/S forward·back · A/D turn · Q/E strafe · P auto · R reset · space brake · Shift fast
+</div>
+<script>
+// Tunable values of the page, in one place.
+const CONFIG = {
+  pollIntervalMs: 100,   // how often the page sends its command
+  percentScale: 100,     // slider percent -> 0..1 speed
+  shiftSpeed: 1,         // speed while Shift is held
+  keys: "wasdqe",        // keys that drive the robot
+};
+
+const down = new Set();
+const spd = document.getElementById("spd"), st = document.getElementById("st");
+const autoBtn = document.getElementById("autoBtn"), nextBtn = document.getElementById("nextBtn");
+let autoCmd = null, resetCmd = false;
+spd.oninput = () => document.getElementById("spdv").textContent = spd.value;
+autoBtn.onclick = () => { autoCmd = !autoBtn.classList.contains("on"); };
+nextBtn.onclick = () => { autoCmd = true; resetCmd = true; };
+function paint() {
+  document.querySelectorAll(".k").forEach(el => el.classList.toggle("on", down.has(el.dataset.k)));
+}
+addEventListener("keydown", ev => {
+  const k = ev.key.toLowerCase();
+  if (k === " ") { down.clear(); autoCmd = false; ev.preventDefault(); }
+  else if (k === "p" && !ev.repeat) { autoCmd = !autoBtn.classList.contains("on"); }
+  else if (k === "r" && !ev.repeat) { autoCmd = true; resetCmd = true; }
+  else if (CONFIG.keys.includes(k)) down.add(k);
+  if (ev.shiftKey) down.add("shift");
+  paint();
+});
+addEventListener("keyup", ev => {
+  down.delete(ev.key.toLowerCase());
+  if (!ev.shiftKey) down.delete("shift");
+  paint();
+});
+addEventListener("blur", () => { down.clear(); paint(); });
+document.querySelectorAll(".k").forEach(el => {
+  el.onpointerdown = () => { down.add(el.dataset.k); paint(); };
+  el.onpointerup = el.onpointerleave = () => { down.delete(el.dataset.k); paint(); };
+});
+async function tick() {
+  // What the keys ask for: forward (W/S), turn (A/D), strafe (Q/E).
+  const fwd = (down.has("w") ? 1 : 0) - (down.has("s") ? 1 : 0);
+  const turn = (down.has("a") ? 1 : 0) - (down.has("d") ? 1 : 0);
+  const side = (down.has("q") ? 1 : 0) - (down.has("e") ? 1 : 0);
+  // The robot's axes are swapped by how the motors are wired (measured on the robot):
+  // what the server calls vx turns, vy drives forward and wz strafes.
+  const vx = -turn, vy = fwd, wz = side;
+  const speed = down.has("shift") ? CONFIG.shiftSpeed : spd.value / CONFIG.percentScale;
+  const payload = { vx, vy, wz, speed };
+  if (autoCmd !== null) { payload.auto = autoCmd; autoCmd = null; }
+  if (resetCmd) { payload.reset_auto = true; resetCmd = false; }
+  try {
+    const r = await fetch("/cmd", { method: "POST", body: JSON.stringify(payload) });
+    const s = await r.json();
+    autoBtn.classList.toggle("on", !!s.auto);
+    autoBtn.textContent = `Auto (P): ${s.auto ? "ON" : "OFF"}`;
+    st.className = "";
+    const tgt = s.target ? ` (${s.target})` : "";
+    st.textContent = `state: ${s.state}${tgt} · delivered ${s.delivered} ` +
+      `(picked ${s.collected}) · line ${s.line} · ` +
+      `speed=${Math.round(speed * CONFIG.percentScale)}% · ` +
+      `motors ${s.motors} · camera ${s.camera ? "yes" : "no"}`;
+  } catch (e) { st.className = "off"; st.textContent = "no connection to the robot"; }
+}
+setInterval(tick, CONFIG.pollIntervalMs);
+</script></body></html>
