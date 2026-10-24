@@ -17,6 +17,6 @@ setup(
     zip_safe=True,
     maintainer="TODO",
     maintainer_email="TODO@ucab.edu.ve",
-    description="Launch files del recolector",
+    description="Collector launch files",
     license="MIT",
 )
