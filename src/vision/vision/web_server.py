@@ -150,6 +150,7 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
         """
         path = urlsplit(self.path).path
         if path not in (PATH_TELEOP, PATH_PARAMS):
+            self._discard_body()
             self._not_found()
             return
         try:
@@ -164,6 +165,17 @@ class ViewerRequestHandler(BaseHTTPRequestHandler):
             self._handle_teleop(values)
         else:
             self._handle_params(values)
+
+    def _discard_body(self):
+        """
+        Read and drop a small request body, so closing the socket right
+        after the answer does not reset the client's connection.
+        """
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return
+        self.rfile.read(max(0, min(length, MAX_BODY_BYTES)))
 
     def _read_json_object(self) -> dict:
         """
