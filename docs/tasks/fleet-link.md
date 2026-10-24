@@ -45,7 +45,9 @@ Their contract (read these files in their repo before starting):
    `camera/...`. Check that the web viewer still works under the namespace. The only absolute names
    are `/zone/*` and the peer pose topic.
 
-3. **Pure logic: `src/mobile_base/mobile_base/fleet.py`** (no rclpy, time passed in as a float):
+3. **Pure logic: `src/mobile_base/mobile_base/fleet.py`** (no rclpy, time passed in as a float).
+   *Implementation note (ADR 0005): `PeerAvoidance` and `Pose2D` live in `peer_avoidance.py`, and its
+   distance fields are `peer_slow_distance_m` / `peer_stop_distance_m`.*
    - `to_fleet_state(local: str) -> str` maps our states to their vocabulary:
      `SEARCH→EXPLORE`, `APPROACH→APPROACH`, `ARRIVED`/`CATCH→CAPTURE`, `CARRY→CARRY`,
      `RELEASE→DELIVER`. Anything else (`PAUSED`, `MANUAL`, `NO_CAMERA`...) maps to `STOP`.
