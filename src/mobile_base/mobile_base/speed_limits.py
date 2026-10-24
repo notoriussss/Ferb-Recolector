@@ -1,8 +1,8 @@
-"""Límite de velocidad según la distancia del ultrasonido. Lógica pura, sin rclpy.
+"""Speed limit based on the ultrasonic distance. Pure logic, no rclpy.
 
-Niveles del plan: más de `slow_distance_m` normal, entre `stop_distance_m` y
-`slow_distance_m` a la mitad, menos de `stop_distance_m` parado. Solo limita el avance
-(vx > 0): retroceder, ir de lado y girar se permiten para poder salir.
+Levels from the plan: beyond `slow_distance_m` normal, between `stop_distance_m` and
+`slow_distance_m` half speed, below `stop_distance_m` stopped. Only forward motion is limited
+(vx > 0): reversing, strafing and turning are allowed so the robot can get out.
 """
 
 from dataclasses import dataclass
@@ -16,7 +16,7 @@ class GuardParams:
 
 
 def limit_forward(vx: float, range_m: float | None, p: GuardParams) -> float:
-    """Velocidad de avance permitida. `range_m` None = no hay lectura reciente: no avanza."""
+    """Allowed forward speed. `range_m` None = no recent reading: no forward motion."""
     if vx <= 0.0:
         return vx
     if range_m is None or range_m < p.stop_distance_m:
