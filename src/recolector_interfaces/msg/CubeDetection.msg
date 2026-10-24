@@ -1,11 +1,11 @@
-# Un cubo visto por la cámara: color, ángulo y distancia aproximada.
-# El ángulo y la distancia se calculan sobre el piso, suponiendo cámara a altura fija
-# e inclinada hacia abajo (ver vision/color_detection.py).
+# A cube seen by the camera: colour, angle and approximate distance.
+# Angle and distance are computed on the floor, assuming a camera at a fixed height
+# tilted downwards (see vision/color_detection.py).
 
-string color          # nombre del color: rojo, naranja, amarillo, verde, azul, morado
-float32 bearing_rad   # ángulo respecto al frente de la cámara; positivo = a la izquierda
-float32 distance_m    # distancia sobre el piso desde la cámara hasta el borde de abajo del cubo
-int32 u               # columna del centro del cubo en la imagen (px)
-int32 v               # fila del borde de abajo del cubo en la imagen (px)
-int32 width_px        # ancho de la caja en la imagen (px)
-int32 height_px       # alto de la caja en la imagen (px)
+string color          # colour name: red, orange, yellow, green, blue, purple
+float32 bearing_rad   # angle relative to the camera's forward axis; positive = to the left
+float32 distance_m    # distance on the floor from the camera to the bottom edge of the cube
+int32 u               # image column of the cube centre (px)
+int32 v               # image row of the cube's bottom edge (px)
+int32 width_px        # box width in the image (px)
+int32 height_px       # box height in the image (px)
