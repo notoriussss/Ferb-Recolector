@@ -1,7 +1,7 @@
-"""Acercarse a un cubo de los colores objetivo y detenerse a cierta distancia.
+"""Approach a cube of the target colours and stop at a given distance.
 
-Es el primer pedazo de la máquina de estados (BUSCAR -> ACERCARSE -> LLEGUÉ), sin la pala.
-Lógica pura, sin rclpy: el nodo behavior_fsm le pasa los cubos vistos y publica el comando.
+This is the first piece of the state machine (SEARCH -> APPROACH -> ARRIVED), without the scoop.
+Pure logic, no rclpy: the behavior_fsm node passes in the cubes it sees and publishes the command.
 """
 
 import math
@@ -10,32 +10,32 @@ from enum import StrEnum
 
 
 class State(StrEnum):
-    PAUSED = "PAUSA"
-    SEARCH = "BUSCAR"
-    APPROACH = "ACERCARSE"
-    ARRIVED = "LLEGUE"
+    PAUSED = "PAUSED"
+    SEARCH = "SEARCH"
+    APPROACH = "APPROACH"
+    ARRIVED = "ARRIVED"
 
 
 @dataclass(frozen=True)
 class Cube:
     color: str
-    bearing_rad: float  # positivo = a la izquierda
+    bearing_rad: float  # positive = to the left
     distance_m: float
 
 
 @dataclass
 class ApproachParams:
-    target_colors: list[str] = field(default_factory=lambda: ["rojo", "naranja", "amarillo"])
-    stop_distance_m: float = 0.17  # se detiene cuando el cubo está a esta distancia de la cámara
-    resume_margin_m: float = 0.04  # si el cubo se aleja más que esto, vuelve a acercarse
-    slow_down_distance_m: float = 0.45  # desde aquí empieza a frenar
+    target_colors: list[str] = field(default_factory=lambda: ["red", "orange", "yellow"])
+    stop_distance_m: float = 0.17  # stops when the cube is this far from the camera
+    resume_margin_m: float = 0.04  # if the cube moves further than this, approach again
+    slow_down_distance_m: float = 0.45  # start slowing down from here
     max_forward_m_s: float = 0.12
     min_forward_m_s: float = 0.03
-    turn_gain: float = 1.5  # rad/s por rad de error
+    turn_gain: float = 1.5  # rad/s per rad of error
     max_turn_rad_s: float = 0.8
-    align_tolerance_rad: float = 0.35  # con más error que esto, gira sin avanzar
+    align_tolerance_rad: float = 0.35  # with more error than this, turn without moving forward
     search_turn_rad_s: float = 0.5
-    lost_timeout_s: float = 1.0  # tiempo sin ver el cubo antes de volver a buscar
+    lost_timeout_s: float = 1.0  # time without seeing the cube before searching again
 
 
 @dataclass(frozen=True)
@@ -58,7 +58,7 @@ class ApproachController:
         self._search_dir = 1.0
 
     def pick_target(self, cubes: list[Cube]) -> Cube | None:
-        """El cubo más cercano de los colores objetivo."""
+        """The nearest cube of the target colours."""
         wanted = set(self.params.target_colors)
         candidates = [c for c in cubes if c.color in wanted]
         return min(candidates, key=lambda c: c.distance_m, default=None)
@@ -86,10 +86,10 @@ class ApproachController:
             self.state = State.APPROACH
             return self._drive_to(cube)
 
-        # no se ve ningún cubo objetivo
+        # no target cube in sight
         lost_for = math.inf if self._last_seen_s is None else now_s - self._last_seen_s
         if lost_for < p.lost_timeout_s and self.state in (State.APPROACH, State.ARRIVED):
-            # puede ser un cuadro malo: espera quieto un momento
+            # may be a bad frame: wait in place for a moment
             return Command()
         self.state = State.SEARCH
         self.target = None
@@ -103,6 +103,6 @@ class ApproachController:
         span = max(1e-6, p.slow_down_distance_m - p.stop_distance_m)
         frac = _clamp((cube.distance_m - p.stop_distance_m) / span, 0.0, 1.0)
         vx = p.min_forward_m_s + frac * (p.max_forward_m_s - p.min_forward_m_s)
-        # menos avance cuanto peor alineado
+        # the worse the alignment, the slower the forward speed
         vx *= 1.0 - abs(cube.bearing_rad) / p.align_tolerance_rad * 0.5
         return Command(vx, wz)
