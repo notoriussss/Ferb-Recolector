@@ -1,12 +1,14 @@
-"""webots_bridge node: Webots <extern> controller for the simulated robot.
+"""
+webots_bridge node: Webots <extern> controller for the simulated robot.
 
-In simulation it does what camera_node, ultrasonic and motor_driver do on the real robot,
-with the same topics:
-  publishes   image_raw (sensor_msgs/Image, bgr8) from the `camara` device
-  publishes   range (sensor_msgs/Range) from `ultrasonido`
+In simulation it does what camera_node, ultrasonic and motor_driver do on the
+real robot, with the same topics:
+  publishes   image_raw (sensor_msgs/Image, bgr8) from the camera device
+  publishes   range (sensor_msgs/Range) from the ultrasonic device
   subscribes  cmd_vel (geometry_msgs/Twist) and drives the 4 mecanum motors
 
-If cmd_vel stops arriving for more than `cmd_timeout_s`, it stops (same as motor_driver).
+If cmd_vel stops arriving for more than `cmd_timeout_s`, it stops (same as
+motor_driver).
 
 It needs the Webots controller library: simulation.launch.py sets up
 PYTHONPATH, LD_LIBRARY_PATH and WEBOTS_CONTROLLER_URL from WEBOTS_HOME.
@@ -21,7 +23,12 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image, Range
 
-from mobile_base.kinematics import WHEELS, MecanumGeometry, scale_to_limit, wheel_speeds
+from mobile_base.kinematics import (
+    WHEELS,
+    MecanumGeometry,
+    scale_to_limit,
+    wheel_speeds,
+)
 from vision.ros_image import bgr_to_image
 
 try:
@@ -29,18 +36,66 @@ try:
 except ImportError:  # reported in main()
     Robot = None
 
+NODE_NAME = "webots_bridge"
+
+# --- Topics and frames --------------------------------------------------------
+TOPIC_IMAGE_RAW = "image_raw"
+TOPIC_RANGE = "range"
+TOPIC_CMD_VEL = "cmd_vel"
+DEFAULT_QOS_DEPTH = 10
+CAMERA_FRAME_ID = "camera"
+ULTRASONIC_FRAME_ID = "ultrasonic"
+
+# --- Device names in RecolectorUCAB.proto (Spanish, set by the Webots model) --
+MOTOR_DEVICE_FORMAT = "motor_{wheel}"
+SCOOP_SERVO_DEVICE = "servo_pala"
+CAMERA_DEVICE = "camara"
+ULTRASONIC_DEVICE = "ultrasonido"
+
+# --- Parameter defaults: RecolectorUCAB PROTO measurements (simulation) -------
+DEFAULT_WHEEL_RADIUS_M = 0.0325
+DEFAULT_HALF_WHEELBASE_M = 0.0605
+DEFAULT_HALF_TRACK_M = 0.0655
+# 10.5 rad/s x 70 % (2S battery).
+DEFAULT_MAX_WHEEL_SPEED_RAD_S = 7.35
+DEFAULT_CMD_TIMEOUT_S = 0.5
+DEFAULT_CAMERA_PERIOD_MS = 64
+DEFAULT_RANGE_PERIOD_MS = 32
+
+# --- Simulated hardware -------------------------------------------------------
+SCOOP_DOWN_RAD = 0.0
+# Simulated HC-SR04 geometry.
+ULTRASONIC_FOV_RAD = 0.26
+ULTRASONIC_MIN_RANGE_M = 0.02
+ULTRASONIC_MAX_RANGE_M = 4.0
+# Webots camera images are BGRA: 4 bytes per pixel, the first 3 are BGR.
+WEBOTS_IMAGE_CHANNELS = 4
+BGR_CHANNELS = 3
+MS_PER_S = 1000.0
+# Time stamp older than any real one, so the first period always elapses.
+NEVER_MS = -1e9
+
 
 class WebotsBridge(Node):
+    """
+    Connects the ROS topics of the real robot to a simulated Webots robot.
+    """
+
     def __init__(self, robot):
-        super().__init__("webots_bridge")
-        # RecolectorUCAB PROTO measurements (simulation)
-        self.declare_parameter("wheel_radius_m", 0.0325)
-        self.declare_parameter("half_wheelbase_m", 0.0605)
-        self.declare_parameter("half_track_m", 0.0655)
-        self.declare_parameter("max_wheel_speed_rad_s", 7.35)  # 10.5 rad/s x 70 % (2S battery)
-        self.declare_parameter("cmd_timeout_s", 0.5)
-        self.declare_parameter("camera_period_ms", 64)
-        self.declare_parameter("range_period_ms", 32)
+        """
+        Declare the parameters and connect to the Webots devices.
+        """
+        super().__init__(NODE_NAME)
+        self.declare_parameter("wheel_radius_m", DEFAULT_WHEEL_RADIUS_M)
+        self.declare_parameter("half_wheelbase_m", DEFAULT_HALF_WHEELBASE_M)
+        self.declare_parameter("half_track_m", DEFAULT_HALF_TRACK_M)
+        self.declare_parameter(
+            "max_wheel_speed_rad_s",
+            DEFAULT_MAX_WHEEL_SPEED_RAD_S,
+        )
+        self.declare_parameter("cmd_timeout_s", DEFAULT_CMD_TIMEOUT_S)
+        self.declare_parameter("camera_period_ms", DEFAULT_CAMERA_PERIOD_MS)
+        self.declare_parameter("range_period_ms", DEFAULT_RANGE_PERIOD_MS)
 
         self._robot = robot
         self._step_ms = int(robot.getBasicTimeStep())
@@ -52,40 +107,79 @@ class WebotsBridge(Node):
         self._max_wheel = self.get_parameter("max_wheel_speed_rad_s").value
         self._cmd_timeout_s = self.get_parameter("cmd_timeout_s").value
 
-        self._motors = {}
-        for n in WHEELS:
-            m = robot.getDevice(f"motor_{n}")
-            m.setPosition(float("inf"))
-            m.setVelocity(0.0)
-            self._motors[n] = m
-        robot.getDevice("servo_pala").setPosition(0.0)
+        self._motors = self._setup_motors()
+        self._setup_sensors()
 
-        self._cam_period_ms = max(self._step_ms, self.get_parameter("camera_period_ms").value)
-        self._camera = robot.getDevice("camara")
-        self._camera.enable(self._cam_period_ms)
-        self._range_period_ms = max(self._step_ms, self.get_parameter("range_period_ms").value)
-        self._sonar = robot.getDevice("ultrasonido")
-        self._sonar.enable(self._range_period_ms)
-
-        self._pub_image = self.create_publisher(Image, "image_raw", qos_profile_sensor_data)
-        self._pub_range = self.create_publisher(Range, "range", qos_profile_sensor_data)
-        self.create_subscription(Twist, "cmd_vel", self._on_cmd, 10)
+        self._pub_image = self.create_publisher(
+            Image,
+            TOPIC_IMAGE_RAW,
+            qos_profile_sensor_data,
+        )
+        self._pub_range = self.create_publisher(
+            Range,
+            TOPIC_RANGE,
+            qos_profile_sensor_data,
+        )
+        self.create_subscription(
+            Twist,
+            TOPIC_CMD_VEL,
+            self._on_cmd,
+            DEFAULT_QOS_DEPTH,
+        )
 
         self._cmd = Twist()
         self._cmd_time_s: float | None = None
-        self._last_cam_ms = -1e9
-        self._last_range_ms = -1e9
+        self._last_cam_ms = NEVER_MS
+        self._last_range_ms = NEVER_MS
         self.get_logger().info(f"connected to Webots robot '{robot.getName()}'")
 
+    def _setup_motors(self) -> dict:
+        """
+        Put the 4 wheel motors in velocity mode and raise the scoop.
+        """
+        motors = {}
+        for wheel in WHEELS:
+            motor = self._robot.getDevice(
+                MOTOR_DEVICE_FORMAT.format(wheel=wheel)
+            )
+            motor.setPosition(float("inf"))
+            motor.setVelocity(0.0)
+            motors[wheel] = motor
+        self._robot.getDevice(SCOOP_SERVO_DEVICE).setPosition(SCOOP_DOWN_RAD)
+        return motors
+
+    def _setup_sensors(self) -> None:
+        """
+        Enable the camera and the ultrasonic sensor at their periods (never
+        faster than the simulation step).
+        """
+        self._cam_period_ms = max(
+            self._step_ms,
+            self.get_parameter("camera_period_ms").value,
+        )
+        self._camera = self._robot.getDevice(CAMERA_DEVICE)
+        self._camera.enable(self._cam_period_ms)
+        self._range_period_ms = max(
+            self._step_ms,
+            self.get_parameter("range_period_ms").value,
+        )
+        self._sonar = self._robot.getDevice(ULTRASONIC_DEVICE)
+        self._sonar.enable(self._range_period_ms)
+
     def _on_cmd(self, msg: Twist):
+        """
+        Store the latest velocity command with the simulation time.
+        """
         self._cmd = msg
         self._cmd_time_s = self._robot.getTime()
 
     def step(self) -> bool:
-        """One simulation step. False when Webots closes or resets."""
+        """
+        One simulation step. False when Webots closes or resets.
+        """
         if self._robot.step(self._step_ms) == -1:
             return False
-        t_ms = self._robot.getTime() * 1000.0
+        t_ms = self._robot.getTime() * MS_PER_S
         self._apply_cmd()
         if t_ms - self._last_cam_ms >= self._cam_period_ms:
             self._last_cam_ms = t_ms
@@ -96,56 +190,79 @@ class WebotsBridge(Node):
         return True
 
     def _apply_cmd(self):
+        """
+        Drive the wheels with the latest command, or stop it if it is stale.
+        """
         fresh = (
             self._cmd_time_s is not None
             and self._robot.getTime() - self._cmd_time_s <= self._cmd_timeout_s
         )
         if fresh:
-            c = self._cmd
-            speeds = wheel_speeds(c.linear.x, c.linear.y, c.angular.z, self._geo)
+            cmd = self._cmd
+            speeds = wheel_speeds(
+                cmd.linear.x,
+                cmd.linear.y,
+                cmd.angular.z,
+                self._geo,
+            )
             speeds = scale_to_limit(speeds, self._max_wheel)
         else:
             speeds = dict.fromkeys(WHEELS, 0.0)
-        for n, v in speeds.items():
-            self._motors[n].setVelocity(v)
+        for wheel, speed in speeds.items():
+            self._motors[wheel].setVelocity(speed)
 
     def _publish_image(self):
+        """
+        Publish the simulated camera image as bgr8.
+        """
         try:
             raw = self._camera.getImage()
         except ValueError:  # over TCP, the first steps arrive without an image
             return
         if not raw:
             return
-        h, w = self._camera.getHeight(), self._camera.getWidth()
-        bgr = np.frombuffer(raw, dtype=np.uint8).reshape(h, w, 4)[:, :, :3]
-        msg = bgr_to_image(bgr)
+        height, width = self._camera.getHeight(), self._camera.getWidth()
+        pixels = np.frombuffer(raw, dtype=np.uint8).reshape(
+            height,
+            width,
+            WEBOTS_IMAGE_CHANNELS,
+        )
+        msg = bgr_to_image(pixels[:, :, :BGR_CHANNELS])
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = "camera"
+        msg.header.frame_id = CAMERA_FRAME_ID
         self._pub_image.publish(msg)
 
     def _publish_range(self):
+        """
+        Publish the simulated ultrasonic reading.
+        """
         msg = Range()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = "ultrasonic"
+        msg.header.frame_id = ULTRASONIC_FRAME_ID
         msg.radiation_type = Range.ULTRASOUND
-        msg.field_of_view = 0.26
-        msg.min_range = 0.02
-        msg.max_range = 4.0
+        msg.field_of_view = ULTRASONIC_FOV_RAD
+        msg.min_range = ULTRASONIC_MIN_RANGE_M
+        msg.max_range = ULTRASONIC_MAX_RANGE_M
         msg.range = float(self._sonar.getValue())
         self._pub_range.publish(msg)
 
 
 def main(args=None):
+    """
+    Entry point of the webots_bridge node: step the simulation and spin ROS
+    in the same loop.
+    """
     if Robot is None:
         print(
             "[webots_bridge] Webots 'controller' module not found. "
-            "Launch it with simulation.launch.py or add $WEBOTS_HOME/lib/controller/python "
-            "to PYTHONPATH.",
+            "Launch it with simulation.launch.py or add "
+            "$WEBOTS_HOME/lib/controller/python to PYTHONPATH.",
             file=sys.stderr,
         )
         sys.exit(1)
     rclpy.init(args=args)
-    robot = Robot()  # waits for Webots to accept the connection (WEBOTS_CONTROLLER_URL)
+    # Waits for Webots to accept the connection (WEBOTS_CONTROLLER_URL).
+    robot = Robot()
     node = WebotsBridge(robot)
     try:
         while rclpy.ok() and node.step():
