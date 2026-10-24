@@ -21,7 +21,7 @@ This repo is a class project. Code files start empty, with a docstring and a `TO
 
 ## Stack and commands
 
-- Ubuntu 24.04, ROS 2 Jazzy, Python 3.12, `rclpy`.
+- Ubuntu 26.04, ROS 2 Lyrical, Python 3.12, `rclpy`.
 - Build: `colcon build --symlink-install`
 - Test: `colcon test && colcon test-result --verbose`
 - Lint and format: `ruff check src tools && ruff format --check src tools`
