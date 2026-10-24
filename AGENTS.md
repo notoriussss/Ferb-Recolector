@@ -24,7 +24,8 @@ This repo is a class project. Code files start empty, with a docstring and a `TO
 - Ubuntu 26.04, ROS 2 Lyrical, Python 3.12, `rclpy`.
 - Build: `colcon build --symlink-install`
 - Test: `colcon test && colcon test-result --verbose`
-- Lint and format: `ruff check src tools && ruff format --check src tools`
+- Lint and format: `ruff check src tools scripts simulation/webots/controllers && ruff format --check src tools scripts simulation/webots/controllers` (`ruff format` fixes the layout)
+- Tools tests (the browser tool is not a ROS package): `python3 -m pytest tools`
 
 ## Code rules
 
@@ -32,9 +33,10 @@ This repo is a class project. Code files start empty, with a docstring and a `TO
 - Every physical parameter (pins, speeds, thresholds, times) goes in YAML, with the unit in the name (`cmd_timeout_s`).
 - Pure logic (kinematics, colour classification, state machine) goes in modules without `rclpy`, with tests in `test/`.
 - Hardware access goes behind a class with a fake version, so it can be tested on the laptop.
-- No magic numbers or strings in the code: a named constant (`UPPER_SNAKE_CASE`, with a comment giving the unit or why), or the YAML if it is tunable. Topic and service names live in `topics.py`, states in `states.py`. `ruff` enforces comparisons (PLR2004).
-- Parameters are declared once, as dataclass fields (`recolector_common/params.py`, shared by every package); the field name is the ROS parameter name. A node's default must equal the YAML value, or come from the same constant.
-- Docstrings: the quotes go on their own lines and the text sits at the same indentation, for every module, class and function (one-liners too):
+- **Read [`docs/code-style.md`](docs/code-style.md) before writing code.** It is the reference for the rules below, with examples. Match the style of the file you edit; do not reformat or restructure code you were not asked to touch.
+- No magic numbers or strings: a named constant (`UPPER_SNAKE_CASE`, unit as suffix, a comment saying why), or the YAML if it is tunable. Topic names live in `topics.py`, states in `states.py`. A default in the code equals the YAML value.
+- Parameters are declared once, as dataclass fields (`recolector_common/params.py`); the field name is the ROS parameter name. Never `declare_parameter("...")` / `get_parameter("...")` with a string in a node.
+- Every module, class and function has a docstring with the quotes on their own lines and the text at the same indentation (one-liners too):
 
   ```python
   def clamp(value, low, high):
@@ -42,7 +44,8 @@ This repo is a class project. Code files start empty, with a docstring and a `TO
       Limit `value` to the closed interval [low, high].
       """
   ```
-- Style: 80 columns, one argument or item per line once a call or literal does not fit (end with a trailing comma). One responsibility per module and per function; `ruff` caps complexity at 10 (C901). If a node file grows past one screen of logic, move the pure part out.
+- Layout: at most 80 columns, and a call or literal that does not fit goes one item per line with a trailing comma (prefer the vertical form from three arguments up).
+- Modularity: nodes are thin wiring (subscribe, call pure logic, publish). One responsibility per module and per function; complexity at most 10. A decision that does not need `rclpy` goes in its own module, with a test.
 - Do not use Nav2, SLAM, Gazebo or MoveIt (course decision). RPi.GPIO does not work on the Pi 5.
 
 ## Robot safety
