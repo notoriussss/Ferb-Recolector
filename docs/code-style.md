@@ -72,6 +72,7 @@ params = read_params(self, ObstacleGuardNodeParams())
 - Grouped names (`camera.hfov_rad`) use `prefix="camera."`.
 - To add a parameter: add the field, add the line to the YAML, done. No `declare_parameter("...")` or `get_parameter("...")` with a string in node code.
 - Parameters that can change at runtime are reloaded in a post-set callback, not read on every tick.
+- The one accepted exception to "no string names" is a family of parameters whose names depend on data, such as `hsv.<colour>` in `cube_detector`. Build the name from a constant prefix (`f"{HSV_PREFIX}{name}"`), never from a bare literal.
 
 ## 3. Modularization: where code goes
 
