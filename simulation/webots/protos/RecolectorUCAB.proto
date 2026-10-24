@@ -1,11 +1,11 @@
 #VRML_SIM R2025a utf8
-# Recolector de cubos UCAB (Phineas / Ferb).
-# Chasis LewanSoul / Hiwonder mecanum: 186 x 161 x 91 mm, ruedas de 65 mm, motores TT 1:120 de 3-6 V SIN encoder.
-# Electronica: Raspberry Pi 5 + HAT Cokoino 4WD (DRV8833), bateria 2S 18650.
-# Sensores del plan: camara OV5647 (~54 grados), 4 TCRT5000 abajo, HC-SR04 al frente, FC-51 y TCS34725 en la pala,
-# MPU6050 (acelerometro + giroscopio, sin brujula).
-# Pala de un cubo con hueco en U de ~32 mm, movida por un servo SG90.
-# Todas las medidas que no vienen del fabricante son estimadas: medir y ajustar.
+# UCAB cube collector (Phineas / Ferb).
+# LewanSoul / Hiwonder mecanum chassis: 186 x 161 x 91 mm, 65 mm wheels, TT 1:120 3-6 V motors WITHOUT encoders.
+# Electronics: Raspberry Pi 5 + Cokoino 4WD HAT (DRV8833), 2S 18650 battery.
+# Planned sensors: OV5647 camera (~54 degrees), 4 TCRT5000 underneath, HC-SR04 in front, FC-51 and TCS34725 on the scoop,
+# MPU6050 (accelerometer + gyroscope, no compass).
+# One-cube scoop with a ~32 mm U-shaped slot, moved by an SG90 servo.
+# Every measurement not from the manufacturer is estimated: measure and adjust.
 # template language: javascript
 
 PROTO RecolectorUCAB [
@@ -24,15 +24,15 @@ PROTO RecolectorUCAB [
 ]
 {
   %<
-    const ruedaR = 0.0325;    // radio rueda mecanum 65 mm
-    const ruedaW = 0.03;      // ancho rueda
-    const ejeX = 0.0605;      // mitad de la distancia entre ejes
-    const ejeY = 0.0655;      // mitad de la trocha (161 mm - ancho de rueda)
+    const wheelR = 0.0325;    // mecanum wheel radius, 65 mm
+    const wheelW = 0.03;      // wheel width
+    const axleX = 0.0605;      // half the wheelbase
+    const axleY = 0.0655;      // half the track (161 mm - wheel width)
     const ruedas = [
-      { n: 'fl', x:  ejeX, y:  ejeY, mat: 'ExteriorWheelMat' },
-      { n: 'fr', x:  ejeX, y: -ejeY, mat: 'InteriorWheelMat' },
-      { n: 'rl', x: -ejeX, y:  ejeY, mat: 'InteriorWheelMat' },
-      { n: 'rr', x: -ejeX, y: -ejeY, mat: 'ExteriorWheelMat' }
+      { n: 'fl', x:  axleX, y:  axleY, mat: 'ExteriorWheelMat' },
+      { n: 'fr', x:  axleX, y: -axleY, mat: 'InteriorWheelMat' },
+      { n: 'rl', x: -axleX, y:  axleY, mat: 'InteriorWheelMat' },
+      { n: 'rr', x: -axleX, y: -axleY, mat: 'ExteriorWheelMat' }
     ];
     const lineas = [
       { n: 'fl', x:  0.075, y:  0.035 },
@@ -50,7 +50,7 @@ PROTO RecolectorUCAB [
     controllerArgs IS controllerArgs
     window IS window
     children [
-      # ---------------- Estructura (solo visual) ----------------
+      # ---------------- Structure (visual only) ----------------
       DEF PLACA_INFERIOR Pose {
         translation 0 0 0.045
         children [
@@ -139,12 +139,12 @@ PROTO RecolectorUCAB [
         ]
       }
 
-      # ---------------- Ruedas mecanum (sin encoder) ----------------
+      # ---------------- Mecanum wheels (no encoders) ----------------
       %< for (const r of ruedas) { >%
       HingeJoint {
         jointParameters HingeJointParameters {
           axis 0 1 0
-          anchor %<= r.x >% %<= r.y >% %<= ruedaR >%
+          anchor %<= r.x >% %<= r.y >% %<= wheelR >%
         }
         device [
           RotationalMotor {
@@ -154,14 +154,14 @@ PROTO RecolectorUCAB [
           }
         ]
         endPoint Solid {
-          translation %<= r.x >% %<= r.y >% %<= ruedaR >%
+          translation %<= r.x >% %<= r.y >% %<= wheelR >%
           rotation 1 0 0 1.5708
           name "rueda_%<= r.n >%"
           contactMaterial "%<= r.mat >%"
           children [
             Shape {
               appearance PBRAppearance { baseColor 0.08 0.08 0.08 roughness 0.9 metalness 0 }
-              geometry DEF CIL_RUEDA Cylinder { height %<= ruedaW >% radius %<= ruedaR >% subdivision 24 }
+              geometry DEF CIL_RUEDA Cylinder { height %<= wheelW >% radius %<= wheelR >% subdivision 24 }
             }
             Pose {
               translation 0 0 %<= (r.y > 0 ? 1 : -1) * 0.0155 >%
@@ -179,8 +179,8 @@ PROTO RecolectorUCAB [
       }
       %< } >%
 
-      # ---------------- Pala de un cubo (servo SG90) ----------------
-      # angulo 0 = pala abajo (empuja); negativo = sube (unos -0.7 rad, ~40 grados, libera el cubo)
+      # ---------------- One-cube scoop (SG90 servo) ----------------
+      # angle 0 = scoop down (pushes); negative = raises it (about -0.7 rad, ~40 degrees, releases the cube)
       HingeJoint {
         jointParameters HingeJointParameters {
           axis 0 1 0
@@ -213,7 +213,7 @@ PROTO RecolectorUCAB [
                 Pose { translation 0.0858 -0.031 -0.035 rotation 0 0 1 -0.767 children [ Shape { appearance USE PLA_AP geometry Box { size 0.0396 0.003 0.035 } } ] }
               ]
             }
-            # FC-51: IR de obstaculo en la pared izquierda de la U, mirando al otro lado (cubo adentro = 1)
+            # FC-51: IR obstacle sensor on the left wall of the U, facing across (cube inside = 1)
             DistanceSensor {
               translation 0.054 0.0155 -0.04
               rotation 0 0 1 -1.5708
@@ -222,7 +222,7 @@ PROTO RecolectorUCAB [
               lookupTable [ 0 1 0, 0.02 1 0, 0.0201 0 0 ]
               numberOfRays 1
             }
-            # TCS34725: sensor de color mirando el cubo de cerca (se simula con una camara de 4x4)
+            # TCS34725: colour sensor looking at the cube up close (simulated with a 4x4 camera)
             Camera {
               translation 0.0405 0 -0.028
               rotation 0 1 0 0.35
@@ -247,8 +247,8 @@ PROTO RecolectorUCAB [
         }
       }
 
-      # ---------------- Sensores ----------------
-      # Camara OV5647 (lente estandar ~54 grados), inclinada ~24 grados hacia abajo
+      # ---------------- Sensors ----------------
+      # OV5647 camera (standard ~54 degree lens), tilted ~24 degrees down
       Camera {
         translation 0.075 0 0.11
         rotation 0 1 0 0.42
@@ -260,7 +260,7 @@ PROTO RecolectorUCAB [
         far 3
         noise 0.01
       }
-      # TCRT5000 x4 mirando al piso (blanco = valor alto, linea negra = valor bajo)
+      # TCRT5000 x4 facing the floor (white = high value, black line = low value)
       %< for (const l of lineas) { >%
       DistanceSensor {
         translation %<= l.x >% %<= l.y >% 0.012
@@ -271,7 +271,7 @@ PROTO RecolectorUCAB [
         numberOfRays 1
       }
       %< } >%
-      # HC-SR04: 2 cm a 4 m, cono de ~15 grados, devuelve metros
+      # HC-SR04: 2 cm to 4 m, ~15 degree cone, returns metres
       DistanceSensor {
         translation 0.088 0 0.068
         name "ultrasonido"
@@ -280,7 +280,7 @@ PROTO RecolectorUCAB [
         numberOfRays 5
         aperture 0.26
       }
-      # MPU6050 (sin magnetometro: no da rumbo absoluto)
+      # MPU6050 (no magnetometer: no absolute heading)
       Accelerometer {
         translation -0.02 0 0.085
         name "acelerometro"
