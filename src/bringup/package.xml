@@ -3,7 +3,7 @@
 <package format="3">
   <name>bringup</name>
   <version>0.0.0</version>
-  <description>Launch files del recolector.</description>
+  <description>Collector launch files.</description>
   <maintainer email="TODO@ucab.edu.ve">TODO</maintainer>
   <license>MIT</license>
 
@@ -11,6 +11,8 @@
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>mobile_base</exec_depend>
   <exec_depend>vision</exec_depend>
+  <exec_depend>recolector_sim</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>

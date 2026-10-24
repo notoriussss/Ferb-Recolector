@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Prueba los 4 motores del HAT uno por uno, sin ROS, con las ruedas en el aire.
+"""
+Tests the 4 HAT motors one by one, without ROS, with the wheels off the
+ground.
 
-TODO (rol 1): implementar.
+TODO (role 1): implement.
 """

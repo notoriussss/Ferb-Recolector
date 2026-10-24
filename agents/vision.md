@@ -1,12 +1,13 @@
-# Guía: visión y color
+# Guide: vision and colour
 
-**Dueño:** rol 2 · **Archivos:** `src/vision/`, `src/mobile_base/mobile_base/color_sensor.py`, `tools/hsv_tuner.py`
+**Owner:** role 2 · **Files:** `src/vision/`, `src/mobile_base/mobile_base/color_sensor.py`, `tools/hsv_tuner.py`
 
-## Lo que hay que saber
+## What you need to know
 
-- OpenCV usa H de 0 a 179. El rojo da la vuelta (cerca de 0 y cerca de 179).
-- Colores de los cubos: rojo, naranja, amarillo, verde, azul y morado/vinotinto. Riesgo conocido: vinotinto contra rojo.
-- La luz del laboratorio cambia: calibra con la luz real y guarda los rangos en `config/hsv_ranges.yaml`.
-- La cámara va en la pala, cerca del suelo e inclinada hacia abajo; la fila del cubo en la imagen da una distancia aproximada.
-- El TCS34725 de la pala confirma el color del cubo atrapado.
-- Si se acuerdan colores reservados con el otro recolector, se configuran por parámetro (ver `docs/interfaz-externa.md`).
+- OpenCV uses H from 0 to 179. Red wraps around (near 0 and near 179).
+- Cube colours: red, orange, yellow, green, blue and purple/burgundy. Known risk: burgundy vs red.
+- The lab lighting changes: calibrate under the real light and save the ranges in `config/hsv_ranges.yaml`.
+- The camera is on the scoop, close to the floor and tilted down; the cube's row in the image gives an approximate distance.
+- Pure logic is split by concern: `hsv.py` (ranges), `camera_model.py` (geometry), `color_detection.py` (detector), `drawing.py`. The first two need no OpenCV, so their tests run anywhere.
+- The TCS34725 on the scoop confirms the colour of the captured cube.
+- If reserved colours are agreed with the other collector, they are set by parameter (see `docs/external-interface.md`).

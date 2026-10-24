@@ -5,7 +5,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
 
-# TODO: agregar aquí cada .msg que el equipo defina en msg/
+# TODO: add here every .msg the team defines in msg/
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/LineSensors.msg"
   "msg/CubeDetection.msg"

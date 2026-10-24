@@ -3,7 +3,7 @@
 <package format="3">
   <name>mobile_base</name>
   <version>0.0.0</version>
-  <description>Base mecanum del recolector: motores, sensores, pala y comportamiento.</description>
+  <description>Collector mecanum base: motors, sensors, scoop and behaviour.</description>
   <maintainer email="TODO@ucab.edu.ve">TODO</maintainer>
   <license>MIT</license>
 
@@ -12,6 +12,8 @@
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>recolector_interfaces</exec_depend>
+  <exec_depend>multirobot_interfaces</exec_depend>
+  <exec_depend>recolector_common</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 

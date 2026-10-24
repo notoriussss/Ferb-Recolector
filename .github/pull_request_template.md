@@ -1,18 +1,18 @@
-## Qué cambia
+## What changes
 
-Antes:
+Before:
 
-Después:
+After:
 
-## Cómo lo probé
+## How I tested it
 
-- [ ] `colcon build` y `colcon test` pasan
-- [ ] `ruff check` y `ruff format --check` pasan
-- [ ] Probado en: simulación / laptop / robot real (tacha lo que no aplique)
+- [ ] `colcon build` and `colcon test` pass
+- [ ] `ruff check` and `ruff format --check` pass
+- [ ] Tested on: simulation / laptop / real robot (strike out what does not apply)
 
-## Tópicos y mensajes
+## Topics and messages
 
-- [ ] No cambia tópicos, mensajes ni servicios
-- [ ] Sí cambia, y actualicé `docs/arquitectura.md`
+- [ ] Does not change topics, messages or services
+- [ ] Does change them, and I updated `docs/architecture.md`
 
 Issue: #

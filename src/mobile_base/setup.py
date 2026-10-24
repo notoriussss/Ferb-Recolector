@@ -9,7 +9,10 @@ setup(
     version="0.0.0",
     packages=find_packages(exclude=["test"]),
     data_files=[
-        ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
+        (
+            "share/ament_index/resource_index/packages",
+            ["resource/" + package_name],
+        ),
         ("share/" + package_name, ["package.xml"]),
         ("share/" + package_name + "/config", glob("config/*.yaml")),
     ],
@@ -17,7 +20,7 @@ setup(
     zip_safe=True,
     maintainer="TODO",
     maintainer_email="TODO@ucab.edu.ve",
-    description="Base mecanum del recolector: motores, sensores, pala y comportamiento.",
+    description="Collector mecanum base: motors, sensors, scoop and behaviour.",
     license="MIT",
     tests_require=["pytest"],
     entry_points={
@@ -29,6 +32,7 @@ setup(
             "scoop_driver = mobile_base.scoop_driver:main",
             "color_sensor = mobile_base.color_sensor:main",
             "behavior_fsm = mobile_base.behavior_fsm:main",
+            "fleet_link = mobile_base.fleet_link:main",
         ],
     },
 )

@@ -1,4 +1,6 @@
-"""Nodo color_sensor: lee el TCS34725 de la pala y publica el color del cubo atrapado.
+"""
+color_sensor node: reads the TCS34725 on the scoop and publishes the colour
+of the caught cube.
 
-TODO: implementar.
+TODO: implement.
 """

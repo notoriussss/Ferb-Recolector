@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
-# Prepara una laptop con Ubuntu 24.04 o WSL2 para desarrollar (ROS 2 Jazzy, colcon, ruff, Webots).
-# TODO (rol 4): implementar.
+# Sets up a laptop with Ubuntu 26.04 or WSL2 for development (ROS 2 Lyrical, colcon, ruff, Webots).
+# TODO (role 4): implement.

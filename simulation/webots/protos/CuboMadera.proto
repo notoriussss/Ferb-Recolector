@@ -1,6 +1,6 @@
 #VRML_SIM R2025a utf8
-# Cubo de madera pintado de la pista UCAB.
-# Medidas estimadas de las fotos: ~2.5 cm de lado; madera ~600 kg/m3 -> ~9.4 g.
+# Painted wooden cube from the UCAB field.
+# Measurements estimated from the photos: ~2.5 cm per side; wood ~600 kg/m3 -> ~9.4 g.
 # template language: javascript
 
 PROTO CuboMadera [

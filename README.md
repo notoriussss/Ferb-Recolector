@@ -1,71 +1,88 @@
 # recolector-ucab
 
-Robot recolector de Robótica UCAB. Es un robot mecanum que recoge cubos de madera dentro del área marcada por la línea negra de la pista y los empuja, uno a la vez con su pala, hasta el cuadrado negro de entrega. Lleva la cuenta de los cubos que entrega.
+Collector robot for UCAB Robotics. It is a mecanum robot that picks up wooden cubes inside the area marked by the track's black line and pushes them, one at a time with its scoop, to the black delivery square. It keeps count of the cubes it delivers.
 
-En la pista también trabajan otros robots (otro recolector y la garra que clasifica los cubos desde el cuadrado). **Son proyectos aparte, de otros equipos.** Este repositorio es solo nuestro robot; lo que haya que acordar con ellos se anota en [`docs/interfaz-externa.md`](docs/interfaz-externa.md).
+Other robots also work on the track (another collector and the claw that sorts the cubes from the square). **They are separate projects, by other teams.** This repository is only our robot; anything that must be agreed with them is recorded in [`docs/external-interface.md`](docs/external-interface.md).
 
-> El código está vacío a propósito: cada archivo dice qué debe hacer y lleva un `TODO`. Lo escribe el equipo.
+> The code is empty on purpose: each file says what it must do and carries a `TODO`. The team writes it.
+> A first piece is already there: colour vision and approaching a cube (without the scoop), tested in simulation.
 
-## Tecnología
+## Technology
 
-| Capa | Elección |
+| Layer | Choice |
 |---|---|
-| Computador | Raspberry Pi 5, 8 GB |
-| Sistema operativo | Ubuntu 24.04 LTS (Server en la Pi; Desktop o WSL2 en las laptops) |
-| Middleware | ROS 2 Jazzy |
-| Lenguaje | **Python 3.12** con `rclpy` |
-| Visión | OpenCV (HSV) |
-| GPIO | `lgpio` / `gpiozero` (RPi.GPIO no funciona en la Pi 5) |
-| Parámetros | YAML |
-| Simulación | Webots R2025a, luego `webots_ros2` |
-| Calidad | `ruff`, `pytest`, GitHub Actions |
+| Computer | Raspberry Pi 5, 8 GB |
+| Operating system | Ubuntu 26.04 LTS (Server on the Pi; Desktop or WSL2 on the laptops) |
+| Middleware | ROS 2 Lyrical |
+| Language | **Python 3.12** with `rclpy` |
+| Vision | OpenCV (HSV) |
+| GPIO | `lgpio` / `gpiozero` (RPi.GPIO does not work on the Pi 5) |
+| Parameters | YAML |
+| Simulation | Webots R2025a, later `webots_ros2` |
+| Quality | `ruff`, `pytest`, GitHub Actions |
 
-Por qué: [`docs/decisiones/`](docs/decisiones/).
+Why: [`docs/decisions/`](docs/decisions/).
 
-## Estructura
+## Structure
 
 ```
 recolector-ucab/
-├── AGENTS.md                 reglas para asistentes de IA (Claude, Copilot, Codex…)
-├── CLAUDE.md                 apunta a AGENTS.md
-├── agents/                   guía por área para asistentes de IA y para revisar PR
-├── docs/                     arquitectura, interfaz externa, equipo, hardware, plan y decisiones
-├── src/                      workspace ROS 2 (colcon)
-│   ├── recolector_interfaces/  mensajes propios
-│   ├── mobile_base/            motores, línea, ultrasonido, pala, color y máquina de estados
-│   ├── vision/                 cámara y detección de cubos
-│   └── bringup/                launch files (robot real y simulación)
-├── simulation/webots/        mundo de la pista y modelo del robot
-├── tools/                    calibración HSV
-├── scripts/                  instalación de la Pi y de las laptops, prueba del HAT
-└── .github/                  CI, plantillas de PR e issues, CODEOWNERS
+├── AGENTS.md                 rules for AI assistants (Claude, Copilot, Codex…)
+├── CLAUDE.md                 points to AGENTS.md
+├── agents/                   per-area guides for AI assistants and for reviewing PRs
+├── docs/                     architecture, code style, external interface, team, hardware, plan and decisions
+├── src/                      ROS 2 workspace (colcon)
+│   ├── recolector_interfaces/  custom messages
+│   ├── recolector_common/      helpers shared by the packages (ROS parameters, node boilerplate)
+│   ├── mobile_base/            motors, line, ultrasonic, scoop, colour and state machine
+│   ├── vision/                 camera, cube detection and web viewer
+│   ├── recolector_sim/         Webots ↔ ROS 2 bridge (simulation only)
+│   └── bringup/                launch files (real robot and simulation)
+├── simulation/webots/        track world and robot model
+├── docker/                   development image (ROS 2 + Webots); used with compose.yaml
+├── tools/                    HSV calibration, ROS world generation, direct HAT control (teleop_web_lib/)
+├── scripts/                  Pi and laptop setup, HAT test
+└── .github/                  CI, PR and issue templates, CODEOWNERS
 ```
 
-## Empezar
+## Getting started
 
 ```bash
-git clone <url-del-repo> ~/recolector-ucab
+git clone <repo-url> ~/recolector-ucab
 cd ~/recolector-ucab
-source /opt/ros/jazzy/setup.bash
+source /opt/ros/lyrical/setup.bash
 colcon build --symlink-install
 source install/setup.bash
 ```
 
-Simulación: abre `simulation/webots/worlds/pista_ucab.wbt` en Webots R2025a ([instrucciones](simulation/webots/README.md)).
+Simulation: open `simulation/webots/worlds/pista_ucab.wbt` in Webots R2025a ([instructions](simulation/webots/README.md)).
 
-## Cómo trabajamos
+### With Docker (without installing ROS)
 
-- `main` siempre compila; nada se sube directo a `main`.
-- Ramas `feature/…`, `fix/…`, `docs/…`; commits `area: qué`.
-- Cada PR lo revisa otra persona del equipo.
-- Código en inglés; comentarios y documentación en español.
+```bash
+docker compose build
+docker compose up sim        # Webots + nodes; open http://localhost:8080: camera and WASD control
+```
 
-Detalles en [`CONTRIBUTING.md`](CONTRIBUTING.md). Roles e hitos en [`docs/equipo.md`](docs/equipo.md).
+The simulated robot searches, approaches the nearest cube of the chosen colours and stops
+before the scoop. Details and other modes in [`docker/README.md`](docker/README.md). To
+take it to the Raspberry Pi: [`docs/ssh-deployment.md`](docs/ssh-deployment.md).
 
-## Documentos
+## How we work
 
-- [Arquitectura](docs/arquitectura.md)
-- [Interfaz con los otros robots](docs/interfaz-externa.md)
-- [Equipo, roles e hitos](docs/equipo.md)
-- [Hardware y conexiones](docs/hardware.md)
-- [Plan original del recolector](docs/plan-recolector.md) (incluye ideas sobre los otros robots que ya no son parte de este repo)
+- `main` always builds; nothing is pushed directly to `main`.
+- Branches `feature/…`, `fix/…`, `docs/…`; commits `area: what`.
+- Every PR is reviewed by another team member.
+- Everything technical in English: code, comments, logs and documentation.
+
+Details in [`CONTRIBUTING.md`](CONTRIBUTING.md). Roles and milestones in [`docs/team.md`](docs/team.md).
+
+## Documents
+
+- [Architecture](docs/architecture.md)
+- [Interface with the other robots](docs/external-interface.md)
+- [Field test: fleet link & arbiter](docs/field-test-fleet-link.md)
+- [Team, roles and milestones](docs/team.md)
+- [Hardware and wiring](docs/hardware.md)
+- [Deploying the code to the robot over SSH](docs/ssh-deployment.md)
+- [Original collector plan](docs/collector-plan.md) (includes ideas about the other robots that are no longer part of this repo)

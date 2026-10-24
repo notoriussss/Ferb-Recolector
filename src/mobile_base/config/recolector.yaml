@@ -1,4 +1,0 @@
-# Parámetros del recolector (pines, velocidades, umbrales).
-# TODO: cada dueño agrega aquí los parámetros de sus nodos, con su unidad en el nombre.
-/**:
-  ros__parameters: {}

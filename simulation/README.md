@@ -1,9 +1,9 @@
 # simulation/
 
-| Carpeta | Qué hay |
+| Folder | Contents |
 |---|---|
-| `webots/` | mundo `pista_ucab.wbt`, PROTO `RecolectorUCAB` y `CuboMadera`, controlador por teclado `recolector_teleop` |
+| `webots/` | `pista_ucab.wbt` world, `RecolectorUCAB` and `CuboMadera` PROTOs, `recolector_teleop` keyboard controller |
 
-El mundo trae dos recolectores: uno es el nuestro y el otro sirve para ensayar con el recolector del otro equipo como obstáculo. Perry no está modelado.
+The world has two collectors: one is ours and the other is used to rehearse with the other team's collector as an obstacle. Perry is not modelled.
 
-Siguiente paso: conectar Webots con ROS 2 (`webots_ros2`) para que nuestros nodos muevan el robot simulado. Ver `agents/simulacion-integracion.md`.
+With ROS 2: the `pista_ucab_ros.wbt` world is the same, but Ferb (our robot) has an `<extern>` controller and is driven by the `webots_bridge` node, while Phineas (the other collector) stays still (`src/recolector_sim`). Launch it with `ros2 launch bringup simulation.launch.py` or with `docker compose up sim` (see `docker/README.md`). If you change `pista_ucab.wbt`, regenerate the variant with `python3 tools/generate_ros_world.py`.

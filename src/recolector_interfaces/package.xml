@@ -3,7 +3,7 @@
 <package format="3">
   <name>recolector_interfaces</name>
   <version>0.0.0</version>
-  <description>Mensajes propios del robot recolector.</description>
+  <description>Custom messages for the collector robot.</description>
   <maintainer email="TODO@ucab.edu.ve">TODO</maintainer>
   <license>MIT</license>
 
