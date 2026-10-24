@@ -98,6 +98,16 @@
   </aside>
 </main>
 <script>
+// Tunable values of the page, in one place.
+const CONFIG = {
+  statePollMs: 300,        // how often the page asks for cubes and state
+  teleopPollMs: 100,       // how often a held key is sent
+  videoRetryMs: 1000,      // wait before requesting the video again
+  percentScale: 100,       // slider percent -> 0..1 speed, metres -> cm
+  fullSpeed: 1,            // speed while Shift is held
+  driveKeys: "wasdqe",     // keys that drive the robot
+  unknownSwatch: "#999",   // colour dot for a colour with no swatch
+};
 const SWATCH = { red:"#d42a24", orange:"#f57314", yellow:"#f2cc1a", green:"#14a050", blue:"#1f45b8", purple:"#6b1a4d" };
 const $ = (id) => document.getElementById(id);
 let colorsBuilt = false, stopTouched = false, colorsTouched = false;
@@ -117,7 +127,7 @@ function buildColors(names) {
   const box = $("colors"); box.innerHTML = "";
   for (const n of names) {
     const lab = document.createElement("label"); lab.className = "chip";
-    lab.innerHTML = `<input type="checkbox" value="${n}"><span class="dot" style="background:${SWATCH[n] || "#999"}"></span>${n}`;
+    lab.innerHTML = `<input type="checkbox" value="${n}"><span class="dot" style="background:${SWATCH[n] || CONFIG.unknownSwatch}"></span>${n}`;
     lab.querySelector("input").addEventListener("change", () => { colorsTouched = true; });
     box.appendChild(lab);
   }
@@ -136,7 +146,7 @@ $("pause").onclick = () => setParams({ enabled: false });
 $("stop").addEventListener("input", () => { stopTouched = true; });
 
 const deg = (r) => (r * 180 / Math.PI).toFixed(0) + "°";
-const cm = (m) => (m * 100).toFixed(0) + " cm";
+const cm = (m) => (m * CONFIG.percentScale).toFixed(0) + " cm";
 
 async function poll() {
   try {
@@ -155,13 +165,13 @@ async function poll() {
     } else {
       st.textContent = "no behavior_fsm"; st.className = "";
     }
-    const rows = s.cubes.map(c => `<tr><td><span class="dot" style="background:${SWATCH[c.color] || "#999"}"></span> ${c.color}</td><td class="num">${cm(c.distance_m)}</td><td class="num">${deg(c.bearing_rad)}</td></tr>`);
+    const rows = s.cubes.map(c => `<tr><td><span class="dot" style="background:${SWATCH[c.color] || CONFIG.unknownSwatch}"></span> ${c.color}</td><td class="num">${cm(c.distance_m)}</td><td class="num">${deg(c.bearing_rad)}</td></tr>`);
     $("cubes").innerHTML = rows.join("") || '<tr><td colspan="3" class="muted">none</td></tr>';
   } catch (e) {
     $("state").textContent = "no connection"; $("state").className = "";
   }
 }
-setInterval(poll, 300); poll();
+setInterval(poll, CONFIG.statePollMs); poll();
 
 // ---------- manual control (WASD) ----------
 // Only sent while a key is held (plus one final "stop" on release), so that an open
@@ -179,7 +189,7 @@ addEventListener("keydown", (ev) => {
   const k = ev.key.toLowerCase();
   shift = ev.shiftKey;
   if (k === " ") { held.clear(); ev.preventDefault(); }
-  else if ("wasdqe".includes(k) && k.length === 1) held.add(k);
+  else if (CONFIG.driveKeys.includes(k) && k.length === 1) held.add(k);
   paintKeys();
 });
 addEventListener("keyup", (ev) => { held.delete(ev.key.toLowerCase()); shift = ev.shiftKey; paintKeys(); });
@@ -194,14 +204,14 @@ async function teleopTick() {
   wasMoving = moving;
   const axis = (pos, neg) => (held.has(pos) ? 1 : 0) - (held.has(neg) ? 1 : 0);
   const body = { vx: axis("w", "s"), vy: axis("a", "d"), wz: axis("q", "e"),
-                 speed: shift ? 1 : $("tspeed").value / 100 };
+                 speed: shift ? CONFIG.fullSpeed : $("tspeed").value / CONFIG.percentScale };
   try {
     await fetch("/api/teleop", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
   } catch (e) { msg("No connection to the robot.", true); }
 }
-setInterval(teleopTick, 100);
+setInterval(teleopTick, CONFIG.teleopPollMs);
 // if the video drops (e.g. the node restarted), request it again
-$("video").onerror = () => setTimeout(() => { $("video").src = "/stream.mjpg?" + Date.now(); }, 1000);
+$("video").onerror = () => setTimeout(() => { $("video").src = "/stream.mjpg?" + Date.now(); }, CONFIG.videoRetryMs);
 </script>
 </body>
 </html>
