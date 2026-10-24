@@ -14,7 +14,7 @@ setup(
     zip_safe=True,
     maintainer="TODO",
     maintainer_email="TODO@ucab.edu.ve",
-    description="Puente entre Webots y ROS 2 para el recolector simulado.",
+    description="Bridge between Webots and ROS 2 for the simulated collector.",
     license="MIT",
     tests_require=["pytest"],
     entry_points={
