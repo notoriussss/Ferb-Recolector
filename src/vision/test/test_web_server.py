@@ -112,6 +112,14 @@ def test_params_status_follows_the_backend(server):
 
 def test_oversized_body_is_413(server):
     backend, port = server
-    body = b" " * (MAX_BODY_BYTES + 1)
-    assert request(port, "POST", "/api/params", body)[0] == 413
+    # Only the header declares the size: the server must answer without
+    # reading (or waiting for) the body, so nothing is sent after it.
+    conn = http.client.HTTPConnection(LOCALHOST, port, timeout=5)
+    conn.putrequest("POST", "/api/params")
+    conn.putheader("Content-Length", str(MAX_BODY_BYTES + 1))
+    conn.endheaders()
+    response = conn.getresponse()
+    status = response.status
+    conn.close()
+    assert status == 413
     assert backend.param_calls == []
