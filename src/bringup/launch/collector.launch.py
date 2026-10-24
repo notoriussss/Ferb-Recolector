@@ -1,12 +1,15 @@
-"""Launches all collector nodes on the Raspberry Pi.
+"""
+Launches all collector nodes on the Raspberry Pi.
 
-For now: camera, detector, web viewer, behavior_fsm (approach a cube) and obstacle_guard.
-For safety, behavior_fsm starts paused: start it with the "Start" button in the web viewer
-or with enabled:=true.
+For now: camera, detector, web viewer, behavior_fsm (approach a cube),
+obstacle_guard and fleet_link.
+For safety, behavior_fsm starts paused: start it with the "Start" button in
+the web viewer or with enabled:=true.
 
-TODO (roles 1 and 4): add motor_driver, ultrasonic, line_sensors, scoop_driver and
-color_sensor once implemented. Without motor_driver the real robot does not move; without
-ultrasonic, obstacle_guard blocks forward motion.
+TODO (roles 1 and 4): add motor_driver, ultrasonic, line_sensors,
+scoop_driver and color_sensor once implemented. Without motor_driver the real
+robot does not move; without ultrasonic, obstacle_guard blocks forward
+motion.
 """
 
 import os
@@ -18,50 +21,118 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
+PACKAGE_VISION = "vision"
+PACKAGE_MOBILE_BASE = "mobile_base"
+VISION_CONFIG_FILE = "hsv_ranges.yaml"
+BASE_CONFIG_FILE = "collector.yaml"
+CONFIG_DIR = "config"
+
+# Launch arguments and their defaults.
+DEFAULT_ROBOT = "ferb"
+DEFAULT_DEVICE = "0"
+DEFAULT_PORT = "8080"
+# Starts paused; see the module docstring.
+DEFAULT_ENABLED = "false"
+DEFAULT_REQUIRE_HEARTBEAT = "true"
+DEFAULT_REQUIRE_POSE = "false"
+
+
+def _config_path(package: str, filename: str) -> str:
+    """
+    Path of a YAML installed in a package's config directory.
+    """
+    share = get_package_share_directory(package)
+    return os.path.join(share, CONFIG_DIR, filename)
+
+
+def _bool_arg(name: str) -> ParameterValue:
+    """
+    A launch argument passed to a node as a boolean parameter.
+    """
+    return ParameterValue(LaunchConfiguration(name), value_type=bool)
+
+
+def _node(package: str, executable: str, namespace, parameters: list) -> Node:
+    """
+    A node in the robot namespace that logs to the screen.
+    """
+    return Node(
+        package=package,
+        executable=executable,
+        namespace=namespace,
+        parameters=parameters,
+        output="screen",
+    )
+
 
 def generate_launch_description():
-    vision_cfg = os.path.join(get_package_share_directory("vision"), "config", "hsv_ranges.yaml")
-    base_cfg = os.path.join(get_package_share_directory("mobile_base"), "config", "collector.yaml")
+    """
+    Declare the launch arguments and every node of the collector.
+    """
+    vision_cfg = _config_path(PACKAGE_VISION, VISION_CONFIG_FILE)
+    base_cfg = _config_path(PACKAGE_MOBILE_BASE, BASE_CONFIG_FILE)
+    robot = LaunchConfiguration("robot")
     return LaunchDescription(
         [
-            DeclareLaunchArgument("device", default_value="0"),
-            DeclareLaunchArgument("port", default_value="8080"),
-            DeclareLaunchArgument("enabled", default_value="false"),
-            Node(
-                package="vision",
-                executable="camera_node",
-                parameters=[
+            DeclareLaunchArgument("robot", default_value=DEFAULT_ROBOT),
+            DeclareLaunchArgument("device", default_value=DEFAULT_DEVICE),
+            DeclareLaunchArgument("port", default_value=DEFAULT_PORT),
+            DeclareLaunchArgument("enabled", default_value=DEFAULT_ENABLED),
+            DeclareLaunchArgument(
+                "require_heartbeat",
+                default_value=DEFAULT_REQUIRE_HEARTBEAT,
+            ),
+            DeclareLaunchArgument(
+                "require_pose",
+                default_value=DEFAULT_REQUIRE_POSE,
+            ),
+            _node(
+                PACKAGE_VISION,
+                "camera_node",
+                robot,
+                [
                     vision_cfg,
-                    {"device": ParameterValue(LaunchConfiguration("device"), value_type=str)},
+                    {
+                        "device": ParameterValue(
+                            LaunchConfiguration("device"),
+                            value_type=str,
+                        )
+                    },
                 ],
-                output="screen",
             ),
-            Node(
-                package="vision",
-                executable="cube_detector",
-                parameters=[vision_cfg],
-                output="screen",
+            _node(PACKAGE_VISION, "cube_detector", robot, [vision_cfg]),
+            _node(
+                PACKAGE_VISION,
+                "web_viewer",
+                robot,
+                [vision_cfg, {"port": LaunchConfiguration("port")}],
             ),
-            Node(
-                package="vision",
-                executable="web_viewer",
-                parameters=[vision_cfg, {"port": LaunchConfiguration("port")}],
-                output="screen",
+            _node(
+                PACKAGE_MOBILE_BASE,
+                "behavior_fsm",
+                robot,
+                [base_cfg, {"enabled": _bool_arg("enabled")}],
             ),
-            Node(
-                package="mobile_base",
-                executable="behavior_fsm",
-                parameters=[
+            _node(
+                PACKAGE_MOBILE_BASE,
+                "obstacle_guard",
+                robot,
+                [
                     base_cfg,
-                    {"enabled": ParameterValue(LaunchConfiguration("enabled"), value_type=bool)},
+                    {
+                        "require_heartbeat": _bool_arg("require_heartbeat"),
+                        "require_pose": _bool_arg("require_pose"),
+                    },
                 ],
-                output="screen",
             ),
-            Node(
-                package="mobile_base",
-                executable="obstacle_guard",
-                parameters=[base_cfg],
-                output="screen",
+            _node(
+                PACKAGE_MOBILE_BASE,
+                "fleet_link",
+                robot,
+                [
+                    base_cfg,
+                    {"robot_name": ParameterValue(robot, value_type=str)},
+                ],
             ),
         ]
     )
