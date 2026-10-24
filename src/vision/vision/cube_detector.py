@@ -1,7 +1,9 @@
-"""cube_detector node: finds cubes by colour (HSV) in image_raw and publishes cubes.
+"""
+cube_detector node: finds cubes by colour (HSV) in image_raw and publishes
+cubes.
 
-It also publishes cubes/debug_image: the same image with one box per cube, to view it in
-web_viewer or rqt_image_view.
+It also publishes cubes/debug_image: the same image with one box per cube,
+to view it in web_viewer or rqt_image_view.
 
 HSV ranges and camera geometry come from config/hsv_ranges.yaml. They can be
 changed at runtime with `ros2 param set /cube_detector ...`.
@@ -9,7 +11,8 @@ changed at runtime with `ros2 param set /cube_detector ...`.
 TODO: also locate the delivery square.
 """
 
-import rclpy
+from dataclasses import fields
+
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from rclpy.parameter import Parameter
@@ -17,33 +20,49 @@ from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
 
 from recolector_interfaces.msg import CubeDetection, CubeDetectionArray
-from vision.color_detection import (
-    CameraModel,
-    ColorDetector,
-    DetectionFilter,
-    draw_detections,
-    parse_hsv_ranges,
-)
+from vision.camera_model import CameraModel, CameraParams
+from vision.color_detection import ColorDetector, DetectionFilter
+from vision.colors import COLOR_NAMES
+from vision.drawing import draw_detections
+from vision.hsv import parse_hsv_ranges
+from vision.node_utils import spin_node
 from vision.ros_image import bgr_to_image, image_to_bgr
+from vision.topics import (
+    DEFAULT_QOS_DEPTH,
+    TOPIC_CUBES,
+    TOPIC_CUBES_DEBUG_IMAGE,
+    TOPIC_IMAGE_RAW,
+)
 
-DEFAULT_COLORS = ["red", "orange", "yellow", "green", "blue", "purple"]
+NODE_NAME = "cube_detector"
+
+# Prefixes of the grouped parameters (hsv.red, camera.hfov_rad, ...).
+HSV_PREFIX = "hsv."
+CAMERA_PREFIX = "camera."
+FILTER_PREFIX = "filter."
+
+# Minimum time between two "bad image" errors.
+IMAGE_ERROR_THROTTLE_S = 5.0
 
 
 class CubeDetectorNode(Node):
+    """
+    Runs the colour detector on every incoming image.
+    """
+
     def __init__(self):
-        super().__init__("cube_detector")
-        self.declare_parameter("color_names", DEFAULT_COLORS)
+        """
+        Declare the parameters and create the detector's topics.
+        """
+        super().__init__(NODE_NAME)
+        self.declare_parameter("color_names", list(COLOR_NAMES))
         for name in self.get_parameter("color_names").value:
-            self.declare_parameter(f"hsv.{name}", Parameter.Type.INTEGER_ARRAY)
-        self.declare_parameter("camera.hfov_rad", 0.94)
-        self.declare_parameter("camera.height_m", 0.11)
-        self.declare_parameter("camera.tilt_rad", 0.42)
-        self.declare_parameter("filter.min_area_px", 40)
-        self.declare_parameter("filter.cube_size_m", 0.025)
-        self.declare_parameter("filter.min_size_ratio", 0.45)
-        self.declare_parameter("filter.max_size_ratio", 2.2)
-        self.declare_parameter("filter.ignore_touching_bottom", True)
-        self.declare_parameter("filter.max_distance_m", 2.5)
+            self.declare_parameter(
+                f"{HSV_PREFIX}{name}",
+                Parameter.Type.INTEGER_ARRAY,
+            )
+        self._declare_group(CAMERA_PREFIX, CameraParams())
+        self._declare_group(FILTER_PREFIX, DetectionFilter())
         self.declare_parameter("publish_debug_image", True)
 
         self._detector = None
@@ -51,17 +70,54 @@ class CubeDetectorNode(Node):
         self.add_on_set_parameters_callback(self._validate_params)
         self.add_post_set_parameters_callback(self._on_params_changed)
 
-        self._pub_cubes = self.create_publisher(CubeDetectionArray, "cubes", 10)
-        self._pub_debug = self.create_publisher(Image, "cubes/debug_image", qos_profile_sensor_data)
-        self.create_subscription(Image, "image_raw", self._on_image, qos_profile_sensor_data)
-        self.get_logger().info(
-            f"looking for cubes of colours: {', '.join(self.get_parameter('color_names').value)}"
+        self._pub_cubes = self.create_publisher(
+            CubeDetectionArray,
+            TOPIC_CUBES,
+            DEFAULT_QOS_DEPTH,
         )
+        self._pub_debug = self.create_publisher(
+            Image,
+            TOPIC_CUBES_DEBUG_IMAGE,
+            qos_profile_sensor_data,
+        )
+        self.create_subscription(
+            Image,
+            TOPIC_IMAGE_RAW,
+            self._on_image,
+            qos_profile_sensor_data,
+        )
+        colors = ", ".join(self.get_parameter("color_names").value)
+        self.get_logger().info(f"looking for cubes of colours: {colors}")
 
     # ---------- parameters ----------
+    def _declare_group(self, prefix: str, defaults) -> None:
+        """
+        Declare `prefix + field` for every field of the `defaults`
+        dataclass.
+        """
+        for field in fields(defaults):
+            self.declare_parameter(
+                f"{prefix}{field.name}",
+                getattr(defaults, field.name),
+            )
+
+    def _read_group(self, prefix: str, defaults):
+        """
+        Build a dataclass of the same type as `defaults` from the parameters
+        named `prefix + field`.
+        """
+        values = {
+            field.name: self.get_parameter(f"{prefix}{field.name}").value
+            for field in fields(defaults)
+        }
+        return type(defaults)(**values)
+
     def _validate_params(self, params):
+        """
+        Reject malformed HSV ranges before they are applied.
+        """
         for p in params:
-            if p.name.startswith("hsv."):
+            if p.name.startswith(HSV_PREFIX):
                 try:
                     parse_hsv_ranges(p.value)
                 except (ValueError, TypeError) as e:
@@ -69,40 +125,47 @@ class CubeDetectorNode(Node):
         return SetParametersResult(successful=True)
 
     def _on_params_changed(self, _params):
-        # the detector is rebuilt on the next frame
+        """
+        Drop the detector; it is rebuilt on the next frame.
+        """
         self._detector = None
 
     def _build_detector(self, width: int, height: int) -> ColorDetector:
+        """
+        Build a detector for images of the given size from the parameters.
+        """
         ranges = {}
         for name in self.get_parameter("color_names").value:
-            values = self.get_parameter(f"hsv.{name}").value
+            values = self.get_parameter(f"{HSV_PREFIX}{name}").value
             if not values:
-                self.get_logger().warn(f"colour '{name}' has no hsv.{name} range; ignored")
+                self.get_logger().warn(
+                    f"colour '{name}' has no {HSV_PREFIX}{name} range; ignored"
+                )
                 continue
             ranges[name] = parse_hsv_ranges(values)
+        camera_params = self._read_group(CAMERA_PREFIX, CameraParams())
         camera = CameraModel(
             width_px=width,
             height_px=height,
-            hfov_rad=self.get_parameter("camera.hfov_rad").value,
-            height_m=self.get_parameter("camera.height_m").value,
-            tilt_rad=self.get_parameter("camera.tilt_rad").value,
+            hfov_rad=camera_params.hfov_rad,
+            height_m=camera_params.height_m,
+            tilt_rad=camera_params.tilt_rad,
         )
-        filters = DetectionFilter(
-            min_area_px=self.get_parameter("filter.min_area_px").value,
-            cube_size_m=self.get_parameter("filter.cube_size_m").value,
-            min_size_ratio=self.get_parameter("filter.min_size_ratio").value,
-            max_size_ratio=self.get_parameter("filter.max_size_ratio").value,
-            ignore_touching_bottom=self.get_parameter("filter.ignore_touching_bottom").value,
-            max_distance_m=self.get_parameter("filter.max_distance_m").value,
-        )
+        filters = self._read_group(FILTER_PREFIX, DetectionFilter())
         return ColorDetector(ranges, camera, filters)
 
     # ---------- image ----------
     def _on_image(self, msg: Image):
+        """
+        Detect cubes in one image and publish them (and the debug image).
+        """
         try:
             bgr = image_to_bgr(msg)
         except ValueError as e:
-            self.get_logger().error(str(e), throttle_duration_sec=5.0)
+            self.get_logger().error(
+                str(e),
+                throttle_duration_sec=IMAGE_ERROR_THROTTLE_S,
+            )
             return
         size = (msg.width, msg.height)
         if self._detector is None or self._image_size != size:
@@ -110,35 +173,36 @@ class CubeDetectorNode(Node):
             self._image_size = size
 
         detections = self._detector.detect(bgr)
+        self._pub_cubes.publish(_to_message(detections, msg.header))
 
-        out = CubeDetectionArray()
-        out.header = msg.header
-        for d in detections:
-            c = CubeDetection()
-            c.color = d.color
-            c.bearing_rad = float(d.bearing_rad)
-            c.distance_m = float(d.distance_m)
-            c.u, c.v = int(d.u), int(d.v)
-            c.width_px, c.height_px = int(d.width_px), int(d.height_px)
-            out.cubes.append(c)
-        self._pub_cubes.publish(out)
+        wants_debug = self.get_parameter("publish_debug_image").value
+        if wants_debug and self._pub_debug.get_subscription_count() > 0:
+            debug_image = draw_detections(bgr, detections)
+            self._pub_debug.publish(bgr_to_image(debug_image, msg.header))
 
-        if self.get_parameter("publish_debug_image").value and (
-            self._pub_debug.get_subscription_count() > 0
-        ):
-            self._pub_debug.publish(bgr_to_image(draw_detections(bgr, detections), msg.header))
+
+def _to_message(detections, header) -> CubeDetectionArray:
+    """
+    Convert detector output into the CubeDetectionArray message.
+    """
+    out = CubeDetectionArray()
+    out.header = header
+    for d in detections:
+        cube = CubeDetection()
+        cube.color = d.color
+        cube.bearing_rad = float(d.bearing_rad)
+        cube.distance_m = float(d.distance_m)
+        cube.u, cube.v = int(d.u), int(d.v)
+        cube.width_px, cube.height_px = int(d.width_px), int(d.height_px)
+        out.cubes.append(cube)
+    return out
 
 
 def main(args=None):
-    rclpy.init(args=args)
-    node = CubeDetectorNode()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        rclpy.try_shutdown()
+    """
+    Entry point of the cube_detector node.
+    """
+    spin_node(CubeDetectorNode, args)
 
 
 if __name__ == "__main__":
