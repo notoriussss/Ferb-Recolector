@@ -2,9 +2,9 @@
 """
 Generates simulation/webots/worlds/pista_ucab_ros.wbt from pista_ucab.wbt.
 
-The ROS 2 variant is the same, but Phineas uses the <extern> controller
-(driven by the webots_bridge node) and Ferb stays still (<none>). Run it
-after changing pista_ucab.wbt:
+The ROS 2 variant is the same, but Ferb (our robot) uses the <extern>
+controller (driven by the webots_bridge node) and Phineas (the other
+collector) stays still (<none>). Run it after changing pista_ucab.wbt:
 
   python3 tools/generate_ros_world.py
 """
@@ -20,15 +20,16 @@ TARGET_WORLD = "pista_ucab_ros.wbt"
 SOURCE_CONTROLLER = "recolector_teleop"
 CONTROLLER_EXTERN = "<extern>"
 CONTROLLER_NONE = "<none>"
-PHINEAS = "Phineas"
-FERB = "Ferb"
+# Robot names in the world. We are Ferb; Phineas is the other collector.
+ROS_ROBOT = "Ferb"  # driven by the ROS nodes through webots_bridge
+IDLE_ROBOT = "Phineas"  # stays still
 
-# Comment block written at the top of the generated world (kept identical to
-# the committed pista_ucab_ros.wbt so regenerating it produces no diff).
+# Comment block written at the top of the generated world.
 HEADER = (
-    "# ROS 2 variant: Phineas uses the <extern> controller "
-    "(driven by the webots_bridge node)\n"
-    f"# and Ferb stays still. Generated from {SOURCE_WORLD} "
+    f"# ROS 2 variant: {ROS_ROBOT} (our robot) uses the {CONTROLLER_EXTERN} "
+    "controller (driven by the webots_bridge node)\n"
+    f"# and {IDLE_ROBOT}, the other collector, stays still. "
+    f"Generated from {SOURCE_WORLD} "
     "by tools/generate_ros_world.py.\n"
 )
 
@@ -55,8 +56,8 @@ def main() -> None:
     # The first line is the #VRML_SIM header.
     first_line, rest = text.split("\n", 1)
     text = f"{first_line}\n{HEADER}{rest}"
-    text = set_controller(text, PHINEAS, CONTROLLER_EXTERN)
-    text = set_controller(text, FERB, CONTROLLER_NONE)
+    text = set_controller(text, ROS_ROBOT, CONTROLLER_EXTERN)
+    text = set_controller(text, IDLE_ROBOT, CONTROLLER_NONE)
     (WORLDS / TARGET_WORLD).write_text(text, encoding="utf-8")
     print(f"done: simulation/webots/worlds/{TARGET_WORLD}")
 
