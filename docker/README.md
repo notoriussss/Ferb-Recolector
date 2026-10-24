@@ -1,7 +1,7 @@
 # Docker environment
 
 A single image with everything needed to develop without installing ROS on your machine:
-Ubuntu 24.04, ROS 2 Jazzy, OpenCV, ruff and Webots R2025a (headless).
+Ubuntu 26.04, ROS 2 Lyrical, OpenCV, ruff and Webots R2025a (headless).
 
 | File | What it does |
 |---|---|
@@ -84,6 +84,6 @@ docker compose down -v         # also deletes the build/install/log volumes
 ## Details
 
 - The base image can be changed with `--build-arg BASE_IMAGE=...` (for example, a Docker Hub
-  mirror if you get `429 Too Many Requests`: `mirror.gcr.io/library/ros:jazzy-ros-base`).
+  mirror if you get `429 Too Many Requests`: `mirror.gcr.io/library/ros:lyrical-ros-base`).
 - The `sim` stage only exists for amd64 (Webots does not publish an arm64 package). On the Pi the
   native installation is used: see [`docs/ssh-deployment.md`](../docs/ssh-deployment.md).
