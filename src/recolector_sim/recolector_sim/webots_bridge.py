@@ -1,15 +1,15 @@
-"""Nodo webots_bridge: controlador <extern> de Webots para el robot simulado.
+"""webots_bridge node: Webots <extern> controller for the simulated robot.
 
-Hace en la simulación lo que en el robot real hacen camera_node, ultrasonic y motor_driver,
-con los mismos tópicos:
-  publica   image_raw (sensor_msgs/Image, bgr8) desde el dispositivo `camara`
-  publica   range (sensor_msgs/Range) desde `ultrasonido`
-  escucha   cmd_vel (geometry_msgs/Twist) y mueve los 4 motores mecanum
+In simulation it does what camera_node, ultrasonic and motor_driver do on the real robot,
+with the same topics:
+  publishes   image_raw (sensor_msgs/Image, bgr8) from the `camara` device
+  publishes   range (sensor_msgs/Range) from `ultrasonido`
+  subscribes  cmd_vel (geometry_msgs/Twist) and drives the 4 mecanum motors
 
-Si deja de llegar cmd_vel por más de `cmd_timeout_s`, frena (igual que motor_driver).
+If cmd_vel stops arriving for more than `cmd_timeout_s`, it stops (same as motor_driver).
 
-Necesita la librería de controladores de Webots: el launch simulacion.launch.py arma
-PYTHONPATH, LD_LIBRARY_PATH y WEBOTS_CONTROLLER_URL a partir de WEBOTS_HOME.
+It needs the Webots controller library: simulation.launch.py sets up
+PYTHONPATH, LD_LIBRARY_PATH and WEBOTS_CONTROLLER_URL from WEBOTS_HOME.
 """
 
 import sys
@@ -26,18 +26,18 @@ from vision.ros_image import bgr_to_image
 
 try:
     from controller import Robot
-except ImportError:  # se avisa en main()
+except ImportError:  # reported in main()
     Robot = None
 
 
 class WebotsBridge(Node):
     def __init__(self, robot):
         super().__init__("webots_bridge")
-        # Medidas del PROTO RecolectorUCAB (simulación)
+        # RecolectorUCAB PROTO measurements (simulation)
         self.declare_parameter("wheel_radius_m", 0.0325)
         self.declare_parameter("half_wheelbase_m", 0.0605)
         self.declare_parameter("half_track_m", 0.0655)
-        self.declare_parameter("max_wheel_speed_rad_s", 7.35)  # 10,5 rad/s × 70 % (batería 2S)
+        self.declare_parameter("max_wheel_speed_rad_s", 7.35)  # 10.5 rad/s x 70 % (2S battery)
         self.declare_parameter("cmd_timeout_s", 0.5)
         self.declare_parameter("camera_period_ms", 64)
         self.declare_parameter("range_period_ms", 32)
@@ -75,14 +75,14 @@ class WebotsBridge(Node):
         self._cmd_time_s: float | None = None
         self._last_cam_ms = -1e9
         self._last_range_ms = -1e9
-        self.get_logger().info(f"conectado al robot '{robot.getName()}' de Webots")
+        self.get_logger().info(f"connected to Webots robot '{robot.getName()}'")
 
     def _on_cmd(self, msg: Twist):
         self._cmd = msg
         self._cmd_time_s = self._robot.getTime()
 
     def step(self) -> bool:
-        """Un paso de simulación. False cuando Webots cierra o reinicia."""
+        """One simulation step. False when Webots closes or resets."""
         if self._robot.step(self._step_ms) == -1:
             return False
         t_ms = self._robot.getTime() * 1000.0
@@ -112,7 +112,7 @@ class WebotsBridge(Node):
     def _publish_image(self):
         try:
             raw = self._camera.getImage()
-        except ValueError:  # por TCP, los primeros pasos llegan sin imagen
+        except ValueError:  # over TCP, the first steps arrive without an image
             return
         if not raw:
             return
@@ -120,13 +120,13 @@ class WebotsBridge(Node):
         bgr = np.frombuffer(raw, dtype=np.uint8).reshape(h, w, 4)[:, :, :3]
         msg = bgr_to_image(bgr)
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = "camara"
+        msg.header.frame_id = "camera"
         self._pub_image.publish(msg)
 
     def _publish_range(self):
         msg = Range()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = "ultrasonido"
+        msg.header.frame_id = "ultrasonic"
         msg.radiation_type = Range.ULTRASOUND
         msg.field_of_view = 0.26
         msg.min_range = 0.02
@@ -138,14 +138,14 @@ class WebotsBridge(Node):
 def main(args=None):
     if Robot is None:
         print(
-            "[webots_bridge] no se encontró el módulo 'controller' de Webots. "
-            "Lánzalo con simulacion.launch.py o agrega $WEBOTS_HOME/lib/controller/python "
-            "al PYTHONPATH.",
+            "[webots_bridge] Webots 'controller' module not found. "
+            "Launch it with simulation.launch.py or add $WEBOTS_HOME/lib/controller/python "
+            "to PYTHONPATH.",
             file=sys.stderr,
         )
         sys.exit(1)
     rclpy.init(args=args)
-    robot = Robot()  # espera a que Webots acepte la conexión (WEBOTS_CONTROLLER_URL)
+    robot = Robot()  # waits for Webots to accept the connection (WEBOTS_CONTROLLER_URL)
     node = WebotsBridge(robot)
     try:
         while rclpy.ok() and node.step():
