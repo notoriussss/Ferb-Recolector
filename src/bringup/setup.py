@@ -22,4 +22,7 @@ setup(
     maintainer_email="TODO@ucab.edu.ve",
     description="Collector launch files",
     license="MIT",
+    # colcon runs pytest when it finds it here (`tests_require` is gone from
+    # recent setuptools and is silently ignored).
+    extras_require={"test": ["pytest"]},
 )
