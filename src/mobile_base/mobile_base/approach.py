@@ -58,7 +58,7 @@ class ApproachParams:
     """
     Tunable parameters of `ApproachController`.
 
-    Field names double as ROS parameter names (see node_utils).
+    Field names double as ROS parameter names (see recolector_common.params).
     """
 
     target_colors: list[str] = field(
@@ -92,6 +92,9 @@ class ApproachController:
     """
 
     def __init__(self, params: ApproachParams | None = None):
+        """
+        Start searching and enabled, with `params` (defaults when None).
+        """
         self.params = params or ApproachParams()
         self.state = State.SEARCH
         self.enabled = True
