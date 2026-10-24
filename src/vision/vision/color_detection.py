@@ -1,7 +1,7 @@
-"""Detección de cubos por color (HSV) y geometría de la cámara. Lógica pura, sin rclpy.
+"""Cube detection by colour (HSV) and camera geometry. Pure logic, no rclpy.
 
-Flujo: imagen BGR -> máscara HSV por color -> contornos -> filtros -> lista de `Detection`
-con el ángulo y la distancia aproximada sobre el piso (cámara inclinada hacia abajo).
+Flow: BGR image -> HSV mask per colour -> contours -> filters -> list of `Detection`
+with the bearing and approximate distance on the floor (camera tilted down).
 """
 
 from __future__ import annotations
@@ -12,68 +12,68 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-# Color de cada caja en la imagen de depuración (BGR)
+# Box colour for each class in the debug image (BGR)
 DRAW_COLORS_BGR = {
-    "rojo": (40, 40, 230),
-    "naranja": (0, 140, 255),
-    "amarillo": (0, 230, 255),
-    "verde": (60, 200, 60),
-    "azul": (230, 120, 30),
-    "morado": (160, 40, 140),
+    "red": (40, 40, 230),
+    "orange": (0, 140, 255),
+    "yellow": (0, 230, 255),
+    "green": (60, 200, 60),
+    "blue": (230, 120, 30),
+    "purple": (160, 40, 140),
 }
 
 
 @dataclass(frozen=True)
 class HsvRange:
-    """Un rango HSV de OpenCV (H 0–179, S y V 0–255)."""
+    """One OpenCV HSV range (H 0–179, S and V 0–255)."""
 
     lower: tuple[int, int, int]
     upper: tuple[int, int, int]
 
 
 def parse_hsv_ranges(values: list[int] | tuple[int, ...]) -> list[HsvRange]:
-    """Convierte una lista plana [h,s,v,h,s,v, ...] (múltiplo de 6) en rangos.
+    """Converts a flat list [h,s,v,h,s,v, ...] (multiple of 6) into ranges.
 
-    Cada grupo de 6 números es un rango: mínimo (h, s, v) y máximo (h, s, v).
-    El rojo usa dos rangos porque el tono da la vuelta (cerca de 0 y cerca de 179).
+    Each group of 6 numbers is one range: minimum (h, s, v) and maximum (h, s, v).
+    Red uses two ranges because the hue wraps around (near 0 and near 179).
     """
     values = [int(x) for x in values]
     if not values or len(values) % 6 != 0:
-        raise ValueError(f"se esperaban grupos de 6 números (h,s,v mín y máx), llegó {values}")
+        raise ValueError(f"expected groups of 6 numbers (h,s,v min and max), got {values}")
     ranges = []
     for i in range(0, len(values), 6):
         lo = tuple(values[i : i + 3])
         hi = tuple(values[i + 3 : i + 6])
         if not all(0 <= a <= b for a, b in zip(lo, hi, strict=True)):
-            raise ValueError(f"rango HSV inválido: {lo} > {hi}")
+            raise ValueError(f"invalid HSV range: {lo} > {hi}")
         if hi[0] > 179 or hi[1] > 255 or hi[2] > 255:
-            raise ValueError(f"rango HSV fuera de límites: {hi}")
+            raise ValueError(f"HSV range out of bounds: {hi}")
         ranges.append(HsvRange(lo, hi))
     return ranges
 
 
 @dataclass(frozen=True)
 class CameraModel:
-    """Cámara pinhole a cierta altura, inclinada hacia abajo, sin giro lateral.
+    """Pinhole camera at some height, tilted down, with no sideways rotation.
 
-    Ejes del robot: x adelante, y a la izquierda. El piso es el plano z = 0.
+    Robot axes: x forward, y to the left. The floor is the plane z = 0.
     """
 
     width_px: int
     height_px: int
     hfov_rad: float
     height_m: float
-    tilt_rad: float  # positivo = mirando hacia abajo
+    tilt_rad: float  # positive = looking down
 
     @property
     def focal_px(self) -> float:
         return (self.width_px / 2.0) / math.tan(self.hfov_rad / 2.0)
 
     def ground_point(self, u: float, v: float) -> tuple[float, float, float] | None:
-        """Punto del piso que se ve en el píxel (u, v).
+        """Floor point seen at pixel (u, v).
 
-        Devuelve (x_m, y_m, depth_m): posición respecto a la cámara (proyectada en el piso)
-        y la profundidad a lo largo del eje óptico. None si el píxel está sobre el horizonte.
+        Returns (x_m, y_m, depth_m): position relative to the camera (projected on the floor)
+        and the depth along the optical axis. None if the pixel is above the horizon.
         """
         f = self.focal_px
         left = (self.width_px / 2.0 - u) / f
@@ -87,7 +87,7 @@ class CameraModel:
         return scale * forward_w, scale * left, scale
 
     def bearing_distance(self, u: float, v: float) -> tuple[float, float] | None:
-        """(ángulo_rad, distancia_m) del punto del piso en (u, v). Ángulo positivo = izquierda."""
+        """(bearing_rad, distance_m) of the floor point at (u, v). Positive bearing = left."""
         p = self.ground_point(u, v)
         if p is None:
             return None
@@ -97,25 +97,25 @@ class CameraModel:
 
 @dataclass(frozen=True)
 class DetectionFilter:
-    """Filtros para descartar manchas que no son cubos."""
+    """Filters that discard blobs that are not cubes."""
 
     min_area_px: int = 40
     cube_size_m: float = 0.025
-    # ancho visto / ancho esperado a esa distancia: fuera de este rango no es un cubo
+    # seen width / expected width at that distance: outside this range it is not a cube
     min_size_ratio: float = 0.45
     max_size_ratio: float = 2.2
-    # descarta manchas que tocan el borde de abajo (la pala se ve ahí)
+    # discard blobs touching the bottom edge (the scoop shows there)
     ignore_touching_bottom: bool = True
     max_distance_m: float = 2.5
 
 
 @dataclass
 class Detection:
-    """Un cubo visto en la imagen."""
+    """A cube seen in the image."""
 
     color: str
-    u: int  # columna del centro (px)
-    v: int  # fila del borde de abajo (px), donde el cubo toca el piso
+    u: int  # centre column (px)
+    v: int  # bottom edge row (px), where the cube touches the floor
     width_px: int
     height_px: int
     bbox: tuple[int, int, int, int]  # x, y, w, h
@@ -123,9 +123,22 @@ class Detection:
     distance_m: float = math.inf
 
 
+@dataclass(frozen=True)
+class Region:
+    """A large colour blob (the delivery line), not a cube."""
+
+    color: str
+    u: int  # column of the nearest point (px)
+    v: int  # lowest row of the blob (px)
+    area_px: int
+    bbox: tuple[int, int, int, int]
+    bearing_rad: float
+    distance_m: float
+
+
 @dataclass
 class ColorDetector:
-    """Detector de cubos de varios colores con su modelo de cámara."""
+    """Multi-colour cube detector with its camera model."""
 
     ranges: dict[str, list[HsvRange]]
     camera: CameraModel
@@ -133,7 +146,7 @@ class ColorDetector:
     morph_kernel_px: int = 3
 
     def mask(self, hsv: np.ndarray, color: str) -> np.ndarray:
-        """Máscara binaria (0/255) de un color en una imagen HSV."""
+        """Binary mask (0/255) of one colour in an HSV image."""
         total = np.zeros(hsv.shape[:2], dtype=np.uint8)
         for r in self.ranges[color]:
             total |= cv2.inRange(hsv, np.array(r.lower), np.array(r.upper))
@@ -143,7 +156,7 @@ class ColorDetector:
         return total
 
     def detect(self, bgr: np.ndarray) -> list[Detection]:
-        """Busca cubos de todos los colores. Ordenados del más cercano al más lejano."""
+        """Finds cubes of every colour, sorted from nearest to farthest."""
         hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
         img_h = bgr.shape[0]
         found: list[Detection] = []
@@ -163,8 +176,37 @@ class ColorDetector:
         found.sort(key=lambda d: d.distance_m)
         return found
 
+    def find_region(self, bgr: np.ndarray, min_area_px: int) -> tuple[Region | None, np.ndarray]:
+        """The largest blob of any of the colours (e.g. the delivery line).
+
+        Returns the region (with bearing and distance of its nearest point) and the mask of
+        all colours combined, to tell which cubes are on the zone.
+        """
+        hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+        total = np.zeros(hsv.shape[:2], dtype=np.uint8)
+        best = None
+        for color in self.ranges:
+            m = self.mask(hsv, color)
+            total |= m
+            contours, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                if area >= min_area_px and (best is None or area > best[1]):
+                    best = (color, area, cnt)
+        if best is None:
+            return None, total
+        color, area, cnt = best
+        pts = cnt.reshape(-1, 2)
+        v = int(pts[:, 1].max())
+        # mean column of the lowest part of the blob: that is where the robot aims
+        u = int(pts[pts[:, 1] >= v - 3, 0].mean())
+        bd = self.camera.bearing_distance(u, v)
+        if bd is None:
+            return None, total
+        return Region(color, u, v, int(area), cv2.boundingRect(cnt), *bd), total
+
     def _locate(self, det: Detection) -> bool:
-        """Calcula ángulo y distancia; devuelve False si la mancha no parece un cubo."""
+        """Computes bearing and distance; returns False if the blob does not look like a cube."""
         cam = self.camera
         p = cam.ground_point(det.u, det.v)
         if p is None:
@@ -184,7 +226,7 @@ def draw_detections(
     detections: list[Detection],
     highlight: Detection | None = None,
 ) -> np.ndarray:
-    """Copia de la imagen con una caja y una etiqueta por cubo. `highlight` va más grueso."""
+    """Copy of the image with a box and label per cube. `highlight` is drawn thicker."""
     out = bgr.copy()
     for det in detections:
         x, y, w, h = det.bbox
