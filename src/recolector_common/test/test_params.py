@@ -1,15 +1,13 @@
 """
-Tests for the dataclass-driven parameter helpers and the math helpers.
+Tests for the dataclass-driven parameter helpers (no ROS needed).
 """
 
-import math
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
 import pytest
 
-from mobile_base.mathutil import clamp, wrap_angle
-from mobile_base.params import declare_params, read_params
+from recolector_common.params import declare_params, read_params
 
 
 @dataclass
@@ -71,13 +69,14 @@ def test_read_params_coerces_to_the_default_type():
     assert result.colors == ["blue", "green"]
 
 
-def test_clamp_limits_both_ends():
-    assert clamp(5.0, -1.0, 1.0) == 1.0
-    assert clamp(-5.0, -1.0, 1.0) == -1.0
-    assert clamp(0.25, -1.0, 1.0) == 0.25
-
-
-def test_wrap_angle_stays_in_range():
-    assert wrap_angle(0.0) == pytest.approx(0.0)
-    assert wrap_angle(3 * math.pi / 2) == pytest.approx(-math.pi / 2)
-    assert wrap_angle(-3 * math.pi / 2) == pytest.approx(math.pi / 2)
+def test_prefix_groups_the_parameter_names():
+    node = FakeNode()
+    declare_params(node, Sample(), prefix="camera.")
+    assert set(node.values) == {
+        "camera.rate_hz",
+        "camera.enabled",
+        "camera.colors",
+        "camera.name",
+    }
+    node.values["camera.name"] = "perry"
+    assert read_params(node, Sample(), prefix="camera.").name == "perry"
