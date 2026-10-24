@@ -1,4 +1,4 @@
-"""Nodo scoop_driver: sube y baja la pala (servo SG90) y avisa si hay un cubo en ella (FC-51).
+"""scoop_driver node: raises and lowers the scoop (SG90 servo) and reports a cube in it (FC-51).
 
-TODO: implementar.
+TODO: implement.
 """
