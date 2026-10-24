@@ -15,6 +15,7 @@ PYTHONPATH, LD_LIBRARY_PATH and WEBOTS_CONTROLLER_URL from WEBOTS_HOME.
 """
 
 import sys
+from dataclasses import dataclass
 
 import numpy as np
 import rclpy
@@ -29,6 +30,7 @@ from mobile_base.kinematics import (
     scale_to_limit,
     wheel_speeds,
 )
+from recolector_common.params import declare_params, read_params
 from vision.ros_image import bgr_to_image
 
 try:
@@ -76,6 +78,23 @@ MS_PER_S = 1000.0
 NEVER_MS = -1e9
 
 
+@dataclass
+class WebotsBridgeParams:
+    """
+    Parameters of the bridge (the defaults are the PROTO measurements).
+
+    Field names double as ROS parameter names (see recolector_common.params).
+    """
+
+    wheel_radius_m: float = DEFAULT_WHEEL_RADIUS_M
+    half_wheelbase_m: float = DEFAULT_HALF_WHEELBASE_M
+    half_track_m: float = DEFAULT_HALF_TRACK_M
+    max_wheel_speed_rad_s: float = DEFAULT_MAX_WHEEL_SPEED_RAD_S
+    cmd_timeout_s: float = DEFAULT_CMD_TIMEOUT_S
+    camera_period_ms: int = DEFAULT_CAMERA_PERIOD_MS
+    range_period_ms: int = DEFAULT_RANGE_PERIOD_MS
+
+
 class WebotsBridge(Node):
     """
     Connects the ROS topics of the real robot to a simulated Webots robot.
@@ -86,26 +105,18 @@ class WebotsBridge(Node):
         Declare the parameters and connect to the Webots devices.
         """
         super().__init__(NODE_NAME)
-        self.declare_parameter("wheel_radius_m", DEFAULT_WHEEL_RADIUS_M)
-        self.declare_parameter("half_wheelbase_m", DEFAULT_HALF_WHEELBASE_M)
-        self.declare_parameter("half_track_m", DEFAULT_HALF_TRACK_M)
-        self.declare_parameter(
-            "max_wheel_speed_rad_s",
-            DEFAULT_MAX_WHEEL_SPEED_RAD_S,
-        )
-        self.declare_parameter("cmd_timeout_s", DEFAULT_CMD_TIMEOUT_S)
-        self.declare_parameter("camera_period_ms", DEFAULT_CAMERA_PERIOD_MS)
-        self.declare_parameter("range_period_ms", DEFAULT_RANGE_PERIOD_MS)
+        declare_params(self, WebotsBridgeParams())
+        self._params = read_params(self, WebotsBridgeParams())
 
         self._robot = robot
         self._step_ms = int(robot.getBasicTimeStep())
         self._geo = MecanumGeometry(
-            self.get_parameter("wheel_radius_m").value,
-            self.get_parameter("half_wheelbase_m").value,
-            self.get_parameter("half_track_m").value,
+            self._params.wheel_radius_m,
+            self._params.half_wheelbase_m,
+            self._params.half_track_m,
         )
-        self._max_wheel = self.get_parameter("max_wheel_speed_rad_s").value
-        self._cmd_timeout_s = self.get_parameter("cmd_timeout_s").value
+        self._max_wheel = self._params.max_wheel_speed_rad_s
+        self._cmd_timeout_s = self._params.cmd_timeout_s
 
         self._motors = self._setup_motors()
         self._setup_sensors()
@@ -155,13 +166,13 @@ class WebotsBridge(Node):
         """
         self._cam_period_ms = max(
             self._step_ms,
-            self.get_parameter("camera_period_ms").value,
+            self._params.camera_period_ms,
         )
         self._camera = self._robot.getDevice(CAMERA_DEVICE)
         self._camera.enable(self._cam_period_ms)
         self._range_period_ms = max(
             self._step_ms,
-            self.get_parameter("range_period_ms").value,
+            self._params.range_period_ms,
         )
         self._sonar = self._robot.getDevice(ULTRASONIC_DEVICE)
         self._sonar.enable(self._range_period_ms)
