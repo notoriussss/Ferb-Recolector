@@ -17,7 +17,7 @@ setup(
     zip_safe=True,
     maintainer="TODO",
     maintainer_email="TODO@ucab.edu.ve",
-    description="Base mecanum del recolector: motores, sensores, pala y comportamiento.",
+    description="Collector mecanum base: motors, sensors, scoop and behaviour.",
     license="MIT",
     tests_require=["pytest"],
     entry_points={
