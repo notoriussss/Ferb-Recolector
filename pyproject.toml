@@ -1,11 +1,33 @@
 # Tool configuration for the whole repo. Each ROS package has its own setup.py.
 [tool.ruff]
-line-length = 100
+# 80 columns so the code stays readable on small screens and side by side.
+line-length = 80
 target-version = "py312"
 extend-exclude = ["build", "install", "log"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP", "N"]
+select = [
+    "E", "F", "W", "I", "B", "UP", "N",
+    # Mccabe complexity: keep functions small and single-purpose.
+    "C90",
+    # Magic values in comparisons: use a named constant (or the YAML).
+    "PLR2004",
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+# Tests compare against literal expected values on purpose.
+"**/test/**" = ["PLR2004"]
+"tools/test_*.py" = ["PLR2004"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["mobile_base", "vision", "recolector_interfaces"]
+known-first-party = [
+    "mobile_base",
+    "vision",
+    "recolector_interfaces",
+    "multirobot_interfaces",
+    "recolector_sim",
+    "teleop_web_lib",
+]
