@@ -1,4 +1,4 @@
-"""Nodo ultrasonic: mide la distancia al frente con el HC-SR04 y publica range.
+"""ultrasonic node: measures the distance ahead with the HC-SR04 and publishes range.
 
-TODO: implementar.
+TODO: implement.
 """
