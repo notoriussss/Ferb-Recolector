@@ -1,10 +1,14 @@
-"""Tests: mecanum kinematics (forward, strafe, turn)."""
+"""
+Tests: mecanum kinematics (forward, strafe, turn).
+"""
 
 import pytest
 
 from mobile_base.kinematics import MecanumGeometry, scale_to_limit, wheel_speeds
 
-GEO = MecanumGeometry(wheel_radius_m=0.0325, half_wheelbase_m=0.0605, half_track_m=0.0655)
+GEO = MecanumGeometry(
+    wheel_radius_m=0.0325, half_wheelbase_m=0.0605, half_track_m=0.0655
+)
 
 
 def test_forward_all_wheels_same():
