@@ -3,7 +3,7 @@
 <package format="3">
   <name>bringup</name>
   <version>0.0.0</version>
-  <description>Launch files del recolector.</description>
+  <description>Collector launch files.</description>
   <maintainer email="TODO@ucab.edu.ve">TODO</maintainer>
   <license>MIT</license>
 
