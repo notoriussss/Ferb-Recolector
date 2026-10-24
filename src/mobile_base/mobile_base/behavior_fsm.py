@@ -31,8 +31,6 @@ from rclpy.node import Node
 from std_msgs.msg import Bool, String
 
 from mobile_base.approach import ApproachController, ApproachParams, Cube
-from mobile_base.node_utils import now_s, spin_node
-from mobile_base.params import declare_params, read_params
 from mobile_base.states import State
 from mobile_base.topics import (
     DEFAULT_QOS_DEPTH,
@@ -43,9 +41,18 @@ from mobile_base.topics import (
     TOPIC_ZONE_DELIVERED,
     TOPIC_ZONE_WANT,
 )
+from recolector_common.node_utils import now_s, spin_node
+from recolector_common.params import declare_params, read_params
 from recolector_interfaces.msg import CubeDetectionArray
 
 NODE_NAME = "behavior_fsm"
+
+# --- Node parameter defaults (real values: config/collector.yaml) ---------
+DEFAULT_CONTROL_RATE_HZ = 20.0
+# Without detections newer than this, stay still.
+DEFAULT_CUBES_TIMEOUT_S = 1.0
+# Without WASD commands newer than this, automatic mode resumes.
+DEFAULT_TELEOP_TIMEOUT_S = 0.3
 
 # Decimals kept when the state report is rounded for the web viewer.
 REPORT_DECIMALS = 3
@@ -61,15 +68,13 @@ class BehaviorNodeParams:
     """
     Node-level parameters (the controller's own live in ApproachParams).
 
-    Field names double as ROS parameter names (see params.py).
+    Field names double as ROS parameter names (see recolector_common.params).
     """
 
     enabled: bool = True
-    control_rate_hz: float = 20.0
-    # Without detections newer than this, stay still.
-    cubes_timeout_s: float = 1.0
-    # Without WASD commands newer than this, automatic mode resumes.
-    teleop_timeout_s: float = 0.3
+    control_rate_hz: float = DEFAULT_CONTROL_RATE_HZ
+    cubes_timeout_s: float = DEFAULT_CUBES_TIMEOUT_S
+    teleop_timeout_s: float = DEFAULT_TELEOP_TIMEOUT_S
 
 
 class BehaviorFsmNode(Node):
@@ -78,6 +83,9 @@ class BehaviorFsmNode(Node):
     """
 
     def __init__(self):
+        """
+        Declare the parameters and create the controller and its topics.
+        """
         super().__init__(NODE_NAME)
         declare_params(self, BehaviorNodeParams())
         declare_params(self, ApproachParams())
