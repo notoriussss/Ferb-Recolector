@@ -11,7 +11,7 @@ changed at runtime with `ros2 param set /cube_detector ...`.
 TODO: also locate the delivery square.
 """
 
-from dataclasses import fields
+from dataclasses import dataclass, field
 
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
@@ -19,13 +19,14 @@ from rclpy.parameter import Parameter
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
 
+from recolector_common.node_utils import spin_node
+from recolector_common.params import declare_params, read_params
 from recolector_interfaces.msg import CubeDetection, CubeDetectionArray
 from vision.camera_model import CameraModel, CameraParams
 from vision.color_detection import ColorDetector, DetectionFilter
 from vision.colors import COLOR_NAMES
 from vision.drawing import draw_detections
 from vision.hsv import parse_hsv_ranges
-from vision.node_utils import spin_node
 from vision.ros_image import bgr_to_image, image_to_bgr
 from vision.topics import (
     DEFAULT_QOS_DEPTH,
@@ -45,6 +46,19 @@ FILTER_PREFIX = "filter."
 IMAGE_ERROR_THROTTLE_S = 5.0
 
 
+@dataclass
+class CubeDetectorParams:
+    """
+    Node-level parameters; the HSV ranges (`hsv.<colour>`), `camera.*` and
+    `filter.*` groups are declared separately.
+
+    Field names double as ROS parameter names (see recolector_common.params).
+    """
+
+    color_names: list[str] = field(default_factory=lambda: list(COLOR_NAMES))
+    publish_debug_image: bool = True
+
+
 class CubeDetectorNode(Node):
     """
     Runs the colour detector on every incoming image.
@@ -55,15 +69,15 @@ class CubeDetectorNode(Node):
         Declare the parameters and create the detector's topics.
         """
         super().__init__(NODE_NAME)
-        self.declare_parameter("color_names", list(COLOR_NAMES))
-        for name in self.get_parameter("color_names").value:
+        declare_params(self, CubeDetectorParams())
+        self._params = read_params(self, CubeDetectorParams())
+        for name in self._params.color_names:
             self.declare_parameter(
                 f"{HSV_PREFIX}{name}",
                 Parameter.Type.INTEGER_ARRAY,
             )
-        self._declare_group(CAMERA_PREFIX, CameraParams())
-        self._declare_group(FILTER_PREFIX, DetectionFilter())
-        self.declare_parameter("publish_debug_image", True)
+        declare_params(self, CameraParams(), prefix=CAMERA_PREFIX)
+        declare_params(self, DetectionFilter(), prefix=FILTER_PREFIX)
 
         self._detector = None
         self._image_size = None
@@ -86,32 +100,10 @@ class CubeDetectorNode(Node):
             self._on_image,
             qos_profile_sensor_data,
         )
-        colors = ", ".join(self.get_parameter("color_names").value)
+        colors = ", ".join(self._params.color_names)
         self.get_logger().info(f"looking for cubes of colours: {colors}")
 
     # ---------- parameters ----------
-    def _declare_group(self, prefix: str, defaults) -> None:
-        """
-        Declare `prefix + field` for every field of the `defaults`
-        dataclass.
-        """
-        for field in fields(defaults):
-            self.declare_parameter(
-                f"{prefix}{field.name}",
-                getattr(defaults, field.name),
-            )
-
-    def _read_group(self, prefix: str, defaults):
-        """
-        Build a dataclass of the same type as `defaults` from the parameters
-        named `prefix + field`.
-        """
-        values = {
-            field.name: self.get_parameter(f"{prefix}{field.name}").value
-            for field in fields(defaults)
-        }
-        return type(defaults)(**values)
-
     def _validate_params(self, params):
         """
         Reject malformed HSV ranges before they are applied.
@@ -128,6 +120,7 @@ class CubeDetectorNode(Node):
         """
         Drop the detector; it is rebuilt on the next frame.
         """
+        self._params = read_params(self, CubeDetectorParams())
         self._detector = None
 
     def _build_detector(self, width: int, height: int) -> ColorDetector:
@@ -135,7 +128,7 @@ class CubeDetectorNode(Node):
         Build a detector for images of the given size from the parameters.
         """
         ranges = {}
-        for name in self.get_parameter("color_names").value:
+        for name in self._params.color_names:
             values = self.get_parameter(f"{HSV_PREFIX}{name}").value
             if not values:
                 self.get_logger().warn(
@@ -143,7 +136,7 @@ class CubeDetectorNode(Node):
                 )
                 continue
             ranges[name] = parse_hsv_ranges(values)
-        camera_params = self._read_group(CAMERA_PREFIX, CameraParams())
+        camera_params = read_params(self, CameraParams(), prefix=CAMERA_PREFIX)
         camera = CameraModel(
             width_px=width,
             height_px=height,
@@ -151,7 +144,7 @@ class CubeDetectorNode(Node):
             height_m=camera_params.height_m,
             tilt_rad=camera_params.tilt_rad,
         )
-        filters = self._read_group(FILTER_PREFIX, DetectionFilter())
+        filters = read_params(self, DetectionFilter(), prefix=FILTER_PREFIX)
         return ColorDetector(ranges, camera, filters)
 
     # ---------- image ----------
@@ -175,7 +168,7 @@ class CubeDetectorNode(Node):
         detections = self._detector.detect(bgr)
         self._pub_cubes.publish(_to_message(detections, msg.header))
 
-        wants_debug = self.get_parameter("publish_debug_image").value
+        wants_debug = self._params.publish_debug_image
         if wants_debug and self._pub_debug.get_subscription_count() > 0:
             debug_image = draw_detections(bgr, detections)
             self._pub_debug.publish(bgr_to_image(debug_image, msg.header))
