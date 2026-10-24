@@ -90,6 +90,8 @@ NO_COLOR = "none"
 NO_CUBE_LABEL = "-"
 
 # --- Hue classification, only for console output ------------------------------
+# Largest value of an 8-bit colour channel.
+CHANNEL_MAX = 255
 MIN_SATURATION = 0.25
 MIN_VALUE = 0.15
 DEGREES_PER_TURN = 360
@@ -132,7 +134,11 @@ def color_from_hue(r: float, g: float, b: float) -> str:
     """
     Simple hue-based classification (0-255 channels), only for console output.
     """
-    hue, saturation, value = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+    hue, saturation, value = colorsys.rgb_to_hsv(
+        r / CHANNEL_MAX,
+        g / CHANNEL_MAX,
+        b / CHANNEL_MAX,
+    )
     if saturation < MIN_SATURATION or value < MIN_VALUE:
         return NO_COLOR
     hue_deg = hue * DEGREES_PER_TURN
