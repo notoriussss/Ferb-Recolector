@@ -1,36 +1,36 @@
-# Parámetros de visión: rangos HSV de cada color y geometría de la cámara.
+# Vision parameters: HSV ranges per colour and camera geometry.
 #
-# Rangos: OpenCV usa H 0–179, S y V 0–255. Cada grupo de 6 números es un rango
-# [h_min, s_min, v_min, h_max, s_max, v_max]; un color puede tener varios rangos seguidos
-# (el rojo usa dos porque el tono da la vuelta).
+# Ranges: OpenCV uses H 0–179, S and V 0–255. Each group of 6 numbers is one range
+# [h_min, s_min, v_min, h_max, s_max, v_max]; a colour can have several ranges in a row
+# (red uses two because the hue wraps around).
 #
-# TODO (rol 2): estos rangos están calibrados con los cubos de la SIMULACIÓN (Webots).
-# Hay que recalibrarlos con los cubos reales y la luz del laboratorio.
+# TODO (role 2): green, blue, orange and purple are still calibrated on the SIMULATION (Webots).
+# Recalibrate them with the real cubes/line and the lab lighting (tools/hsv_tuner.py).
 
 cube_detector:
   ros__parameters:
-    color_names: [rojo, naranja, amarillo, verde, azul, morado]
+    color_names: [yellow, red]
     hsv:
-      rojo:     [0, 110, 100, 6, 255, 255, 173, 110, 100, 179, 255, 255]
-      naranja:  [8, 120, 100, 18, 255, 255]
-      amarillo: [20, 100, 100, 35, 255, 255]
-      verde:    [45, 80, 50, 90, 255, 255]
-      azul:     [100, 110, 90, 130, 255, 255]
-      morado:   [145, 60, 40, 171, 255, 255]
+      red:    [0, 110, 100, 6, 255, 255, 173, 110, 100, 179, 255, 255]
+      orange: [8, 120, 100, 18, 255, 255]
+      yellow: [20, 100, 100, 35, 255, 255]
+      green:  [45, 80, 50, 90, 255, 255]
+      blue:   [100, 110, 90, 130, 255, 255]
+      purple: [145, 60, 40, 171, 255, 255]
 
-    # Geometría de la cámara: tomada del PROTO RecolectorUCAB (OV5647 ~54°, a 11 cm del piso,
-    # inclinada 24° hacia abajo). TODO medir en el robot real.
+    # Camera geometry calibrated on the real robot (the bottom row v=479 is at ~16.5 cm,
+    # right where the scoop's blind spot starts).
     camera:
       hfov_rad: 0.94
-      height_m: 0.11
-      tilt_rad: 0.42
+      height_m: 0.10
+      tilt_rad: 0.20
 
     filter:
       min_area_px: 40
       cube_size_m: 0.025
-      min_size_ratio: 0.45       # ancho visto / ancho esperado de un cubo a esa distancia
+      min_size_ratio: 0.45       # seen width / expected cube width at that distance
       max_size_ratio: 2.2
-      ignore_touching_bottom: true   # la pala se ve en el borde de abajo de la imagen
+      ignore_touching_bottom: true   # the scoop shows at the bottom edge of the image
       max_distance_m: 2.5
 
     publish_debug_image: true
@@ -40,14 +40,14 @@ web_viewer:
     port: 8080
     max_fps_hz: 15.0
     jpeg_quality: 75
-    color_names: [rojo, naranja, amarillo, verde, azul, morado]
-    # topes del control manual (WASD) a velocidad 100 %; el máximo del robot es ~0,24 m/s
+    color_names: [red, orange, yellow, green, blue, purple]
+    # manual control (WASD) limits at 100 % speed; the robot's maximum is ~0.24 m/s
     teleop_max_linear_m_s: 0.15
     teleop_max_angular_rad_s: 1.0
 
 camera_node:
   ros__parameters:
-    device: "0"        # /dev/video0; o un pipeline de GStreamer
+    device: "0"        # /dev/video0, or a GStreamer pipeline
     width_px: 640
     height_px: 480
     fps_hz: 15.0
