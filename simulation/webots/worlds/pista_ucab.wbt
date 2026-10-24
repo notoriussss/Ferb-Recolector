@@ -1,17 +1,17 @@
 #VRML_SIM R2025a utf8
-# Pista UCAB Robotica: tablero blanco con contorno de cinta negra y cuadrado de entrega.
-# Medidas estimadas a partir de las fotos (rectificadas): tablero ~1.93 x 1.22 m, cinta de 19 mm,
-# cuadrado de entrega ~24 x 24 cm, 14 cubos de ~2.5 cm en 6 colores. Medir la pista real y ajustar.
+# UCAB Robotics field: white board with a black tape border and a delivery square.
+# Measurements estimated from the (rectified) photos: board ~1.93 x 1.22 m, 19 mm tape,
+# delivery square ~24 x 24 cm, 14 cubes of ~2.5 cm in 6 colours. Measure the real field and adjust.
 
 EXTERNPROTO "../protos/RecolectorUCAB.proto"
 EXTERNPROTO "../protos/CuboMadera.proto"
 
 WorldInfo {
   info [
-    "Pista UCAB - recolectores Phineas y Ferb"
-    "Phineas: rojo, naranja, amarillo. Ferb: verde, azul, morado (propuesta del plan)."
+    "UCAB field - collectors Phineas and Ferb"
+    "Phineas: red, orange, yellow. Ferb: green, blue, purple (plan proposal)."
   ]
-  title "Pista UCAB"
+  title "UCAB field"
   basicTimeStep 16
   contactProperties [
     ContactProperties {
@@ -116,7 +116,7 @@ DEF PHINEAS RecolectorUCAB {
   translation -0.45 0.0 0
   name "Phineas"
   controller "recolector_teleop"
-  controllerArgs [ "--colores=rojo,naranja,amarillo" ]
+  controllerArgs [ "--colors=red,orange,yellow" ]
   marcadorUrl [ "textures/aruco_phineas_id1.png" ]
 }
 DEF FERB RecolectorUCAB {
@@ -124,7 +124,7 @@ DEF FERB RecolectorUCAB {
   rotation 0 0 1 3.14159
   name "Ferb"
   controller "recolector_teleop"
-  controllerArgs [ "--colores=verde,azul,morado" ]
+  controllerArgs [ "--colors=green,blue,purple" ]
   marcadorUrl [ "textures/aruco_ferb_id2.png" ]
   colorChasis 0.1 0.12 0.25
 }
