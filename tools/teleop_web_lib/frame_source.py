@@ -18,6 +18,7 @@ FrameSource = Callable[[], np.ndarray | None]
 BACKEND_PICAMERA2 = "picamera2"
 
 # --- Fake camera (laptop) -----------------------------------------------------
+BGR_CHANNELS = 3
 FAKE_BACKGROUND_BGR = (40, 40, 40)
 FAKE_SQUARE_BGR = (0, 0, 255)
 FAKE_SQUARE_WIDTH_PX = 40
@@ -78,7 +79,7 @@ def _fake_source(width_px: int, height_px: int) -> FrameSource:
         """
         A frame of the fake camera.
         """
-        frame = np.zeros((height_px, width_px, 3), np.uint8)
+        frame = np.zeros((height_px, width_px, BGR_CHANNELS), np.uint8)
         frame[:] = FAKE_BACKGROUND_BGR
         elapsed_s = time.monotonic() - start_s
         x = int(elapsed_s * FAKE_SQUARE_SPEED_PX_S) % width_px
