@@ -14,7 +14,7 @@ We needed to establish fleet interoperability without abandoning our architectur
 1. **Vendor only the interface package:**  
    We copy `src/multirobot_interfaces/` byte-for-byte from `ucab-multirobot` (commit `09d0f16`) into our workspace (`src/multirobot_interfaces/`). The package name, `.msg` and `.srv` definitions, `CMakeLists.txt`, and `package.xml` remain identical to guarantee DDS type-hash compatibility across nodes.
 2. **Do not vendor application code:**  
-   We do **not** copy any node implementations, controller logic, or internal modules from `ucab-multirobot`. All node logic (such as `fleet_link`, `PeerAvoidance` in `fleet.py`, and safety hooks in `obstacle_guard`) is implemented independently in this repository according to our clean architecture (pure logic without `rclpy`, unit tests with pytest, and parameterization via YAML).
+   We do **not** copy any node implementations, controller logic, or internal modules from `ucab-multirobot`. All node logic (such as `fleet_link`, `PeerAvoidance` in `peer_avoidance.py`, and safety hooks in `obstacle_guard`) is implemented independently in this repository according to our clean architecture (pure logic without `rclpy`, unit tests with pytest, and parameterization via YAML).
 3. **Adopt upstream arbitration and localization contracts:**  
    - Zone arbitration via `/zone/request` and `/zone/release` (`multirobot_interfaces/RequestZone` and `ReleaseZone`).
    - Lease monitoring and fleet heartbeat via `/zone/occupant` (`std_msgs/String` at 2 Hz; missing for >2.0 s stops the robot).
