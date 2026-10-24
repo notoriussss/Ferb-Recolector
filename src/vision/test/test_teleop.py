@@ -1,4 +1,6 @@
-"""Tests: web viewer manual control (keys -> velocities)."""
+"""
+Tests: web viewer manual control (keys -> velocities).
+"""
 
 import math
 
@@ -19,7 +21,9 @@ def test_strafe_and_turn_signs():
 
 
 def test_values_are_clamped():
-    vx, vy, wz = teleop_velocity({"vx": 5, "vy": -5, "wz": 3, "speed": 9}, LIMITS)
+    vx, vy, wz = teleop_velocity(
+        {"vx": 5, "vy": -5, "wz": 3, "speed": 9}, LIMITS
+    )
     assert (vx, vy, wz) == (0.2, -0.2, 1.0)
 
 
