@@ -12,10 +12,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/ruff-action@v3
         with:
-          args: check src tools
+          args: check src tools scripts simulation/webots/controllers
       - uses: astral-sh/ruff-action@v3
         with:
-          args: format --check src tools
+          args: format --check src tools scripts simulation/webots/controllers
 
   build-test:
     runs-on: ubuntu-26.04
@@ -39,3 +39,8 @@ jobs:
           source install/setup.bash
           colcon test --event-handlers console_cohesion+
           colcon test-result --verbose
+      - name: Tools tests (not a ROS package, so colcon does not run them)
+        shell: bash
+        run: |
+          source /opt/ros/lyrical/setup.bash
+          python3 -m pytest tools
