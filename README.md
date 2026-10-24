@@ -12,8 +12,8 @@ Other robots also work on the track (another collector and the claw that sorts t
 | Layer | Choice |
 |---|---|
 | Computer | Raspberry Pi 5, 8 GB |
-| Operating system | Ubuntu 24.04 LTS (Server on the Pi; Desktop or WSL2 on the laptops) |
-| Middleware | ROS 2 Jazzy |
+| Operating system | Ubuntu 26.04 LTS (Server on the Pi; Desktop or WSL2 on the laptops) |
+| Middleware | ROS 2 Lyrical |
 | Language | **Python 3.12** with `rclpy` |
 | Vision | OpenCV (HSV) |
 | GPIO | `lgpio` / `gpiozero` (RPi.GPIO does not work on the Pi 5) |
@@ -49,7 +49,7 @@ recolector-ucab/
 ```bash
 git clone <repo-url> ~/recolector-ucab
 cd ~/recolector-ucab
-source /opt/ros/jazzy/setup.bash
+source /opt/ros/lyrical/setup.bash
 colcon build --symlink-install
 source install/setup.bash
 ```
@@ -80,6 +80,7 @@ Details in [`CONTRIBUTING.md`](CONTRIBUTING.md). Roles and milestones in [`docs/
 
 - [Architecture](docs/architecture.md)
 - [Interface with the other robots](docs/external-interface.md)
+- [Field test: fleet link & arbiter](docs/field-test-fleet-link.md)
 - [Team, roles and milestones](docs/team.md)
 - [Hardware and wiring](docs/hardware.md)
 - [Deploying the code to the robot over SSH](docs/ssh-deployment.md)
