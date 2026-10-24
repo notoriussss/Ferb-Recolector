@@ -1,23 +1,23 @@
-# Cómo contribuir
+# How to contribute
 
-## Flujo
+## Workflow
 
-1. Toma o crea un issue con la plantilla "Tarea".
-2. Crea una rama desde `main`: `feature/<area>-<tema>`, `fix/<area>-<tema>` o `docs/<tema>`.
-3. Commits pequeños con el formato `area: qué`, en español:
-   - `mobile_base: frenar si no llega cmd_vel`
-   - `vision: rango HSV del morado`
+1. Take or create an issue with the "Task" template.
+2. Create a branch from `main`: `feature/<area>-<topic>`, `fix/<area>-<topic>` or `docs/<topic>`.
+3. Small commits with the format `area: what`, in English:
+   - `mobile_base: brake if cmd_vel stops arriving`
+   - `vision: HSV range for purple`
 
-   Áreas: `interfaces`, `mobile_base`, `vision`, `bringup`, `simulation`, `tools`, `scripts`, `docs`, `ci`.
-4. Antes del PR: `ruff check src tools`, `colcon build` y `colcon test`.
-5. Abre el PR contra `main` con la plantilla llena y pide revisión al dueño del área (`docs/equipo.md`).
-6. Se fusiona con squash cuando la CI está verde y lo aprobó alguien que no es el autor.
+   Areas: `interfaces`, `mobile_base`, `vision`, `bringup`, `simulation`, `tools`, `scripts`, `docs`, `ci`.
+4. Before the PR: `ruff check src tools`, `colcon build` and `colcon test`.
+5. Open the PR against `main` with the template filled in and request review from the area owner (`docs/team.md`).
+6. It is squash-merged when CI is green and someone other than the author approved it.
 
-## Reglas
+## Rules
 
-- `main` protegida.
-- Un PR, un cambio. Si pasa de ~400 líneas, pártelo.
-- Si cambias un tópico o mensaje, actualiza `docs/arquitectura.md` en el mismo PR.
-- Parámetros nuevos en YAML, con unidad en el nombre.
-- Código en inglés; comentarios, logs y documentación en español.
-- Si usaste un asistente de IA, revisa tú el código: el autor del PR responde por él.
+- `main` is protected.
+- One PR, one change. If it goes over ~400 lines, split it.
+- If you change a topic or message, update `docs/architecture.md` in the same PR.
+- New parameters go in YAML, with the unit in the name.
+- Everything technical in English: code, comments, logs and documentation.
+- If you used an AI assistant, review the code yourself: the PR author answers for it.

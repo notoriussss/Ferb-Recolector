@@ -1,4 +1,4 @@
-# Configuración de herramientas para todo el repo. Cada paquete ROS tiene su propio setup.py.
+# Tool configuration for the whole repo. Each ROS package has its own setup.py.
 [tool.ruff]
 line-length = 100
 target-version = "py312"

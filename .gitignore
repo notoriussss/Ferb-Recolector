@@ -15,15 +15,15 @@ __pycache__/
 simulation/webots/**/.*.wbproj
 simulation/webots/**/*.wbt~
 
-# Editores y sistema
+# Editors and OS
 .vscode/*
 !.vscode/extensions.json
 .idea/
 .DS_Store
 Thumbs.db
 
-# Datos locales: fotos de calibración, rosbags, credenciales
-datos/
+# Local data: calibration photos, rosbags, credentials
+data/
 *.db3
 *.mcap
 .env

@@ -1,9 +1,9 @@
-# Imagen de desarrollo del recolector: ROS 2 Jazzy + OpenCV (+ Webots R2025a en la etapa "sim").
+# Collector development image: ROS 2 Jazzy + OpenCV (+ Webots R2025a in the "sim" stage).
 #
-#   base -> lo mínimo para compilar y correr los nodos (sirve también en la Pi 5, arm64)
-#   sim  -> base + Webots R2025a sin pantalla (solo amd64)
+#   base -> the minimum to build and run the nodes (also works on the Pi 5, arm64)
+#   sim  -> base + headless Webots R2025a (amd64 only)
 #
-# Se usa desde compose.yaml (raíz del repo). Ver docker/README.md.
+# Used from compose.yaml (repo root). See docker/README.md.
 
 ARG BASE_IMAGE=ros:jazzy-ros-base
 FROM ${BASE_IMAGE} AS base
@@ -18,10 +18,10 @@ RUN apt-get update \
       curl \
  && rm -rf /var/lib/apt/lists/*
 
-# ruff para el lint (mismo que la CI)
+# ruff for linting (same as CI)
 RUN pip3 install --no-cache-dir --break-system-packages ruff
 
-# Webots y ROS se quejan si no hay usuario
+# Webots and ROS complain if there is no user
 ENV USER=ros
 
 WORKDIR /ws
@@ -42,5 +42,5 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 ENV WEBOTS_HOME=/usr/local/webots
-# Webots sin GPU: render por software
+# Webots without GPU: software rendering
 ENV LIBGL_ALWAYS_SOFTWARE=1

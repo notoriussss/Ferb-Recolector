@@ -1,10 +1,10 @@
-# Entorno de desarrollo con Docker. Instrucciones en docker/README.md.
+# Docker development environment. Instructions in docker/README.md.
 #
-#   docker compose up sim            todo dentro de Docker (Webots sin ventana) + visor web
-#   docker compose up sim-externo    nodos en Docker, Webots abierto en tu máquina (Windows/Linux)
-#   docker compose run --rm dev      consola con ROS 2 para compilar, probar y lint
+#   docker compose up sim            everything inside Docker (windowless Webots) + web viewer
+#   docker compose up sim-external   nodes in Docker, Webots open on your machine (Windows/Linux)
+#   docker compose run --rm dev      shell with ROS 2 to build, test and lint
 #
-# Visor web de la cámara: http://localhost:8080
+# Camera web viewer: http://localhost:8080
 
 x-ros: &ros
   build:
@@ -15,7 +15,7 @@ x-ros: &ros
   init: true
   volumes:
     - .:/ws
-    # build/install/log quedan en volúmenes de Docker, no en tu carpeta
+    # build/install/log live in Docker volumes, not in your folder
     - ws_build:/ws/build
     - ws_install:/ws/install
     - ws_log:/ws/log
@@ -27,16 +27,16 @@ services:
     <<: *ros
     ports:
       - "8080:8080"
-    command: ros2 launch bringup simulacion.launch.py webots:=headless
+    command: ros2 launch bringup simulation.launch.py webots:=headless
 
-  sim-externo:
+  sim-external:
     <<: *ros
     ports:
       - "8080:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: >
-      ros2 launch bringup simulacion.launch.py webots:=none
+      ros2 launch bringup simulation.launch.py webots:=none
       webots_url:=tcp://${WEBOTS_HOST:-host.docker.internal}:1234/Phineas
 
   dev:

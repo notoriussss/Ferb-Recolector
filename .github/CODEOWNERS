@@ -1,4 +1,4 @@
-# Reemplazar @rolN por los usuarios de GitHub de cada dueño (ver docs/equipo.md).
+# Replace @rolN with each owner's GitHub username (see docs/team.md).
 *                                @rol4
 /src/mobile_base/                @rol1
 /src/mobile_base/mobile_base/behavior_fsm.py   @rol3
@@ -7,8 +7,8 @@
 /src/vision/                     @rol2
 /tools/                          @rol2
 /src/recolector_interfaces/      @rol3
-/docs/arquitectura.md            @rol3
-/docs/interfaz-externa.md        @rol3
+/docs/architecture.md            @rol3
+/docs/external-interface.md      @rol3
 /scripts/                        @rol1
 /docs/hardware.md                @rol1
 /simulation/                     @rol4

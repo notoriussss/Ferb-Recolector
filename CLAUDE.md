@@ -1,1 +1,1 @@
-Lee y sigue @AGENTS.md. Las guías por área están en `agents/`.
+Read and follow @AGENTS.md. Area guides are in `agents/`.

@@ -1,47 +1,47 @@
 # AGENTS.md
 
-Instrucciones para cualquier asistente de IA que trabaje en este repositorio (Claude Code, Copilot, Codex, Cursor, etc.).
+Instructions for any AI assistant working in this repository (Claude Code, Copilot, Codex, Cursor, etc.).
 
-## Qué es este proyecto
+## What this project is
 
-Un solo robot: el recolector de Robótica UCAB. Es mecanum, recoge cubos de 2,5 cm dentro del área de la línea negra y los empuja con su pala al cuadrado de entrega, contando los que entrega. Los otros robots de la pista son proyectos de otros equipos y **no** van en este repo. El contexto está en `README.md` y `docs/`.
+A single robot: the UCAB Robotics collector. It is mecanum, picks up 2.5 cm cubes inside the black-line area and pushes them with its scoop to the delivery square, counting the ones it delivers. The other robots on the track are other teams' projects and do **not** go in this repo. Context is in `README.md` and `docs/`.
 
-## El código lo escribe el equipo
+## The team writes the code
 
-Este repo es un proyecto de clase. Los archivos de código empiezan vacíos, con un docstring y un `TODO`.
-- No escribas la implementación completa de un archivo si nadie te lo pidió explícitamente.
-- Si te piden ayuda, prefiere explicar, revisar o sugerir; deja que la persona escriba.
-- No llenes de golpe archivos de otras áreas.
+This repo is a class project. Code files start empty, with a docstring and a `TODO`.
+- Do not write a file's full implementation unless someone explicitly asked you to.
+- If asked for help, prefer explaining, reviewing or suggesting; let the person write.
+- Do not fill in other areas' files all at once.
 
-## Antes de tocar algo
+## Before touching anything
 
-1. Lee la guía de tu área en `agents/`.
-2. Si cambias un tópico o un mensaje, actualiza primero `docs/arquitectura.md`.
-3. No inventes medidas del hardware: si no están en `docs/hardware.md` o en un YAML, deja un `# TODO medir`.
+1. Read your area's guide in `agents/`.
+2. If you change a topic or a message, update `docs/architecture.md` first.
+3. Do not invent hardware measurements: if they are not in `docs/hardware.md` or in a YAML, leave a `# TODO measure`.
 
-## Stack y comandos
+## Stack and commands
 
 - Ubuntu 24.04, ROS 2 Jazzy, Python 3.12, `rclpy`.
-- Compilar: `colcon build --symlink-install`
-- Probar: `colcon test && colcon test-result --verbose`
-- Lint y formato: `ruff check src tools && ruff format --check src tools`
+- Build: `colcon build --symlink-install`
+- Test: `colcon test && colcon test-result --verbose`
+- Lint and format: `ruff check src tools && ruff format --check src tools`
 
-## Reglas de código
+## Code rules
 
-- Identificadores en inglés; comentarios, docstrings y logs en español.
-- Todo parámetro físico (pines, velocidades, umbrales, tiempos) va en YAML, con la unidad en el nombre (`cmd_timeout_s`).
-- La lógica pura (cinemática, clasificación de color, máquina de estados) va en módulos sin `rclpy`, con pruebas en `test/`.
-- El acceso al hardware va detrás de una clase con versión falsa, para probar en la laptop.
-- No usar Nav2, SLAM, Gazebo ni MoveIt (decisión del curso). RPi.GPIO no funciona en la Pi 5.
+- Everything technical in English: identifiers, comments, docstrings, logs, states, config values and UI text.
+- Every physical parameter (pins, speeds, thresholds, times) goes in YAML, with the unit in the name (`cmd_timeout_s`).
+- Pure logic (kinematics, colour classification, state machine) goes in modules without `rclpy`, with tests in `test/`.
+- Hardware access goes behind a class with a fake version, so it can be tested on the laptop.
+- Do not use Nav2, SLAM, Gazebo or MoveIt (course decision). RPi.GPIO does not work on the Pi 5.
 
-## Seguridad del robot
+## Robot safety
 
-- La velocidad pasa por `obstacle_guard` antes de llegar a `motor_driver`.
-- `motor_driver` frena si deja de recibir comandos.
-- Batería 2S como máximo: el HAT aguanta 10,8 V.
+- Velocity goes through `obstacle_guard` before reaching `motor_driver`.
+- `motor_driver` brakes if it stops receiving commands.
+- 2S battery at most: the HAT handles 10.8 V.
 
 ## Git
 
-- Ramas `feature/<area>-<tema>`, `fix/…`, `docs/…`; nunca push a `main`.
-- Commits `area: qué`. PR pequeño con la plantilla llena.
-- Nada de `build/`, `install/`, `log/`, fotos pesadas ni credenciales.
+- Branches `feature/<area>-<topic>`, `fix/…`, `docs/…`; never push to `main`.
+- Commits `area: what`. Small PR with the template filled in.
+- No `build/`, `install/`, `log/`, heavy photos or credentials.
