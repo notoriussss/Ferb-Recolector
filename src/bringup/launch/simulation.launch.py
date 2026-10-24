@@ -2,14 +2,14 @@
 Launches the collector nodes connected to Webots.
 
 Instead of webots_ros2 we use our own bridge (recolector_sim/webots_bridge),
-which is the <extern> controller of the "Phineas" robot and publishes the
+which is the <extern> controller of the "Ferb" robot (us) and publishes the
 same topics as the real robot.
 
 Arguments:
   webots      headless (default, no window, for Docker), gui or none
               (none = Webots is already open, for example on Windows)
-  webots_url  which Webots to connect to: ipc://1234/Phineas (same machine) or
-              tcp://<ip>:1234/Phineas (Webots on another machine or outside
+  webots_url  which Webots to connect to: ipc://1234/Ferb (same machine) or
+              tcp://<ip>:1234/Ferb (Webots on another machine or outside
               Docker)
   world       world to open
               (default simulation/webots/worlds/pista_ucab_ros.wbt)
@@ -45,7 +45,7 @@ CONFIG_DIR = "config"
 # --- Launch argument values ---------------------------------------------------
 MODE_HEADLESS = "headless"
 MODE_NONE = "none"
-DEFAULT_WEBOTS_URL = "ipc://1234/Phineas"
+DEFAULT_WEBOTS_URL = "ipc://1234/Ferb"
 DEFAULT_PORT = "8080"
 WORLD_FILE = "pista_ucab_ros.wbt"
 
