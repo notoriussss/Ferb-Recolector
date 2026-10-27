@@ -28,6 +28,12 @@ DEFAULT_MAX_DISTANCE_M = 2.5
 
 # --- Detector constants -------------------------------------------------------
 DEFAULT_MORPH_KERNEL_PX = 3
+# A cube bounding box is roughly square (width / height within this band).
+MIN_CUBE_ASPECT_RATIO = 0.55
+MAX_CUBE_ASPECT_RATIO = 1.75
+# A cube contour is convex and fills most of its bounding box.
+MIN_CUBE_SOLIDITY = 0.75
+MIN_CUBE_EXTENT = 0.45
 # A line blob must be at least this many times longer than wide.
 DEFAULT_MIN_ELONGATION = 3.0
 # Narrowest blob width considered when measuring elongation (avoids dividing
@@ -186,9 +192,20 @@ class ColorDetector:
         """
         A located `Detection` if the blob passes every filter, else None.
         """
-        if cv2.contourArea(contour) < self.filters.min_area_px:
+        area = cv2.contourArea(contour)
+        if area < self.filters.min_area_px:
             return None
         x, y, w, h = cv2.boundingRect(contour)
+        if h <= 0 or w <= 0:
+            return None
+        aspect = w / h
+        if not (MIN_CUBE_ASPECT_RATIO <= aspect <= MAX_CUBE_ASPECT_RATIO):
+            return None
+        if area / (w * h) < MIN_CUBE_EXTENT:
+            return None
+        hull_area = cv2.contourArea(cv2.convexHull(contour))
+        if hull_area <= 0 or area / hull_area < MIN_CUBE_SOLIDITY:
+            return None
         touches_bottom = y + h >= image_height_px - BOTTOM_EDGE_MARGIN_PX
         if self.filters.ignore_touching_bottom and touches_bottom:
             return None
@@ -238,10 +255,10 @@ class ColorDetector:
         if det.distance_m > self.filters.max_distance_m:
             return False
         expected_px = cam.focal_px * self.filters.cube_size_m / depth
-        ratio = det.width_px / expected_px
-        return (
-            self.filters.min_size_ratio <= ratio <= self.filters.max_size_ratio
-        )
+        width_ratio = det.width_px / expected_px
+        height_ratio = det.height_px / expected_px
+        lo, hi = self.filters.min_size_ratio, self.filters.max_size_ratio
+        return lo <= width_ratio <= hi and lo <= height_ratio <= hi
 
 
 def _is_elongated(contour: np.ndarray, min_elongation: float) -> bool:
