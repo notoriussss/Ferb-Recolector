@@ -76,6 +76,8 @@ def test_status_has_the_keys_the_page_reads():
         "collected",
         "delivered",
         "line",
+        "line_black",
+        "line_raw",
     }
     drive.close()
 
