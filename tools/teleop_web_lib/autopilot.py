@@ -6,10 +6,12 @@ Auto mode: find a target-colour cube, push it into the scoop, carry it to the
 green/blue delivery line, leave it there and count it. The bottom line sensor
 stops the robot at the black border (it backs up and turns inward).
 
-Axes: the robot's axes are swapped by how the motors are wired (measured on
-the robot). A `DriveCommand` therefore uses vy > 0 to drive forward, vx as the
-negated turn (vx < 0 turns left) and wz to strafe. `_forward`, `_backward` and
-`_turn` hide that so the state machine can think in plain directions.
+Axes: on the physical robot, `DriveCommand` maps to:
+- `vy > 0` = forward (W), `vy < 0` = backward/reverse (S)
+- `vx < 0` = strafe left (A), `vx > 0` = strafe right (D)
+- `wz > 0` = spin counter-clockwise (Q), `wz < 0` = spin clockwise (E)
+`_forward`, `_backward`, `_strafe` and `_turn` hide that so the state machine
+can think in plain directions.
 """
 
 import time
@@ -28,6 +30,7 @@ STATE_CATCH = "CATCH"
 STATE_CARRY = "CARRY"
 STATE_DROP = "DROP"
 STATE_EXPLORE = "EXPLORE"
+STATE_LINE_STOP = "LINE (stop)"
 STATE_LINE_BACKUP = "LINE (back up)"
 STATE_LINE_TURN = "LINE (turn)"
 STATE_DROP_BACKUP = "DROP (back up)"
@@ -101,7 +104,14 @@ def _backward(speed: float) -> DriveCommand:
 
 def _turn(direction: float, speed: float) -> DriveCommand:
     """
-    Turn in place; `direction` is DIR_LEFT or DIR_RIGHT.
+    Spin in place; `direction` is DIR_LEFT (+1, Q/CCW) or DIR_RIGHT (-1, E/CW).
+    """
+    return DriveCommand(0.0, 0.0, direction, speed)
+
+
+def _strafe(direction: float, speed: float) -> DriveCommand:
+    """
+    Move sideways; `direction` is DIR_LEFT (+1, A) or DIR_RIGHT (-1, D).
     """
     return DriveCommand(-direction, 0.0, 0.0, speed)
 
@@ -134,6 +144,11 @@ class AutoPilot:
         self.carrying = False
         self._phase_until = 0.0
         self._line_turn_until = 0.0
+        self._line_stop_until = 0.0
+        self._line_black = False
+        self._escape = STOP
+        self._last_motion: DriveCommand | None = None
+        self._last_motion_s = 0.0
         self._resume_state = STATE_SEARCH
         self._last_seen_s: float | None = None
         self._search_start_s = time.monotonic()
@@ -185,15 +200,19 @@ class AutoPilot:
         """
         if self.state.startswith((PREFIX_DONE, PREFIX_NO_CUBES)):
             return STOP
-        if self.state in (STATE_MANUAL, STATE_PAUSED):
+        if self.enabled and self.state in (STATE_MANUAL, STATE_PAUSED):
             # Back from WASD or pause: if it had a cube, keep carrying it.
             self._resume_after_pause(now)
+        self._line_black = line_black
         if line_black and not self.state.startswith(PREFIX_LINE):
             self._start_line_recovery(now)
         for phase in (self._line_phase, self._catch_phase, self._drop_phase):
             command = phase(now)
             if command is not None:
                 return command
+        if not self.enabled:
+            self.state = STATE_PAUSED
+            return STOP
         if self.state.startswith(STATE_CARRY):
             return self._carry_step(now)
         return self._search_step(now)
@@ -208,28 +227,91 @@ class AutoPilot:
     # ---------- timed phases (return None when not active) ----------
     def _start_line_recovery(self, now: float) -> None:
         """
-        Black line underneath: brake, back up and turn inward, then resume
-        what it was doing.
+        Black line underneath: brake, move away from the line (opposite to
+        the way it was going) until the sensor sees white again plus a
+        margin, turn inward (unless it backed into the line and escaped
+        forward, already facing the arena), then resume what it was doing.
         """
         cfg = self.cfg
-        self._resume_state = STATE_CARRY if self.carrying else STATE_SEARCH
-        self.state = STATE_LINE_BACKUP
-        self._phase_until = now + cfg.line_backup_s
-        self._line_turn_until = self._phase_until + cfg.line_turn_s
+        if not self.enabled:
+            self._resume_state = STATE_PAUSED
+        elif self.carrying:
+            self._resume_state = STATE_CARRY
+        else:
+            self._resume_state = STATE_SEARCH
+        self._escape = self._escape_command(now)
+        self.state = STATE_LINE_STOP
+        self._line_stop_until = now + cfg.line_stop_s
+        self._phase_until = self._line_stop_until + cfg.line_backup_s
+        # Spin inward only when we hit the line going forward in Auto mode.
+        needs_turn = (
+            self.enabled and self._escape.vy < 0 and self._escape.vx == 0
+        )
+        turn_s = cfg.line_turn_s if needs_turn else 0.0
+        self._line_turn_until = self._phase_until + turn_s
         self.target_info = None
+
+    def note_motion(self, now: float, command: DriveCommand) -> None:
+        """
+        Remember the translation the robot is doing (manual or automatic:
+        forward/back on `vy` or lateral strafe on `vx`), so the line recovery
+        can undo it. Ignored while recovering, so the escape itself does not
+        overwrite the direction it escapes from.
+        """
+        if self.state.startswith(PREFIX_LINE) or command.speed <= 0.0:
+            return
+        if command.vx != 0.0 or command.vy != 0.0:
+            self._last_motion = command
+            self._last_motion_s = now
+
+    def _escape_command(self, now: float) -> DriveCommand:
+        """
+        Straight move away from the line: opposite to the main axis of the
+        last translation (forward W -> back S, back S -> forward W, lateral
+        left A -> right D, lateral right D -> left A). Backs up when there
+        is no recent motion to undo.
+        """
+        cfg = self.cfg
+        last = self._last_motion
+        if last is None or now - self._last_motion_s > cfg.line_motion_memory_s:
+            return _backward(cfg.line_speed)
+        if abs(last.vx) > abs(last.vy):
+            direction = DIR_RIGHT if last.vx < 0 else DIR_LEFT
+            return _strafe(direction, cfg.line_speed)
+        if last.vy < 0:
+            return _forward(cfg.line_speed)
+        return _backward(cfg.line_speed)
 
     def _line_phase(self, now: float) -> DriveCommand | None:
         """
-        Back up, then turn, then hand control back to the resumed state.
+        Stop, move away from the line, then turn, then hand control back to
+        the resumed state.
         """
         if not self.state.startswith(PREFIX_LINE):
             return None
         cfg = self.cfg
+        if now < self._line_stop_until:
+            self.state = STATE_LINE_STOP
+            return STOP
         if now < self._phase_until:
-            return _backward(cfg.line_speed)
+            self.state = STATE_LINE_BACKUP
+            # Still on black: keep moving away (up to a limit), so it always
+            # leaves the border before turning.
+            backing_s = now - self._line_stop_until
+            if self._line_black and backing_s < cfg.line_backup_max_s:
+                needs_turn = (
+                    self.enabled
+                    and self._escape.vy < 0
+                    and self._escape.vx == 0
+                )
+                turn_s = cfg.line_turn_s if needs_turn else 0.0
+                self._phase_until = now + cfg.line_backup_s
+                self._line_turn_until = self._phase_until + turn_s
+            return self._escape
         if now < self._line_turn_until:
             self.state = STATE_LINE_TURN
             return _turn(self._search_dir, cfg.turn_speed)
+        self._last_motion = None
         self.state = self._resume_state
         self._search_start_s = now
         return None
@@ -390,8 +472,9 @@ class AutoPilot:
         label: str,
     ) -> DriveCommand:
         """
-        Turn in place if far off-heading; otherwise drive forward while
-        correcting the heading.
+        Turn in place if off-heading; otherwise drive straight forward
+        (star motion: never mix rotation and translation on Mecanum wheels,
+        which causes sideways drift).
         """
         cfg = self.cfg
         if abs(bearing) > cfg.align_tolerance_rad:
@@ -410,11 +493,4 @@ class AutoPilot:
             cfg.min_speed_fraction,
             FULL_AXIS,
         )
-        steer = clamp(
-            bearing / cfg.align_tolerance_rad,
-            -cfg.steer_limit,
-            cfg.steer_limit,
-        )
-        return DriveCommand(
-            -steer, FULL_AXIS, 0.0, cfg.forward_speed * fraction
-        )
+        return _forward(cfg.forward_speed * fraction)
