@@ -34,6 +34,12 @@ class LineSensor:
         """
         return self._dev.value == self._black_value
 
+    def raw_value(self) -> int:
+        """
+        Raw digital output (0 or 1) from the DO pin.
+        """
+        return int(self._dev.value)
+
     def close(self) -> None:
         """
         Release the GPIO pin.

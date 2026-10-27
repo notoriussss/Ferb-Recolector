@@ -22,6 +22,12 @@ DEFAULT_NO_CUBES_STOP_S = 7.0
 DEFAULT_SCOOP_PUSH_S = 0.65
 DEFAULT_LINE_BACKUP_S = 0.6
 DEFAULT_LINE_TURN_S = 1.2
+# Brake pause as soon as the black border is seen, before backing up.
+DEFAULT_LINE_STOP_S = 0.2
+# Longest time backing up to get off the line (avoids sliding along the border).
+DEFAULT_LINE_BACKUP_MAX_S = 0.9
+# How recent the last movement must be for the line recovery to undo it.
+DEFAULT_LINE_MOTION_MEMORY_S = 1.5
 DEFAULT_LINE_SPEED = 0.35
 DEFAULT_ZONE_STOP_DISTANCE_M = 0.20
 DEFAULT_ZONE_ARRIVE_V_PX = 440
@@ -47,11 +53,11 @@ DEFAULT_MIN_SLOW_SPAN_M = 0.05
 # Looser than the ROS cube_detector because this tool's camera is not
 # calibrated as tightly and the scoop is allowed in view.
 DEFAULT_DETECTION_FILTER = {
-    "min_area_px": 60,
-    "min_size_ratio": 0.15,
-    "max_size_ratio": 6.0,
+    "min_area_px": 80,
+    "min_size_ratio": 0.50,
+    "max_size_ratio": 1.65,
     "ignore_touching_bottom": False,
-    "max_distance_m": 3.0,
+    "max_distance_m": 1.6,
 }
 
 # The vision package is plain Python: it is imported straight from the repo,
@@ -92,6 +98,9 @@ class AutoConfig:
     scoop_push_s: float = DEFAULT_SCOOP_PUSH_S
     line_backup_s: float = DEFAULT_LINE_BACKUP_S
     line_turn_s: float = DEFAULT_LINE_TURN_S
+    line_stop_s: float = DEFAULT_LINE_STOP_S
+    line_backup_max_s: float = DEFAULT_LINE_BACKUP_MAX_S
+    line_motion_memory_s: float = DEFAULT_LINE_MOTION_MEMORY_S
     line_speed: float = DEFAULT_LINE_SPEED
     zone_stop_distance_m: float = DEFAULT_ZONE_STOP_DISTANCE_M
     zone_arrive_v_px: int = DEFAULT_ZONE_ARRIVE_V_PX

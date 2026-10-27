@@ -6,7 +6,7 @@ involved.
 
 import pytest
 
-from teleop_web_lib.autopilot import AutoPilot
+from teleop_web_lib.autopilot import AutoPilot, DriveCommand
 from teleop_web_lib.config import (
     HSV_CONFIG_PATH,
     HSV_NODE_NAME,
@@ -83,23 +83,92 @@ def test_pick_carry_deliver_and_count():
     assert pilot.state.startswith("EXPLORE")
 
 
-def test_black_line_backs_up_then_resumes_carrying():
+def test_black_line_moves_away_opposite_to_the_last_motion():
+    cases = [
+        (
+            DriveCommand(0.0, 1.0, 0.0, 0.4),
+            0.0,
+            -1.0,
+        ),  # forward (W) -> back (S)
+        (
+            DriveCommand(0.0, -1.0, 0.0, 0.4),
+            0.0,
+            1.0,
+        ),  # reverse (S) -> forward (W)
+        (DriveCommand(-1.0, 0.0, 0.0, 0.4), 1.0, 0.0),  # left (A) -> right (D)
+        (DriveCommand(1.0, 0.0, 0.0, 0.4), -1.0, 0.0),  # right (D) -> left (A)
+    ]
+    for moved, expect_vx, expect_vy in cases:
+        pilot, _ = make_pilot()
+        pilot.note_motion(0.0, moved)
+        pilot.step(0.1, line_black=True)  # brake
+        command = pilot.step(0.4, line_black=True)
+        assert (command.vx, command.vy, command.wz) == (
+            expect_vx,
+            expect_vy,
+            0.0,
+        )
+
+
+def test_black_line_backs_up_when_there_is_no_recent_motion():
+    pilot, _ = make_pilot()
+    pilot.note_motion(0.0, DriveCommand(0.0, -1.0, 0.0, 0.4))
+    late = pilot.cfg.line_motion_memory_s + 1.0
+    pilot.step(late, line_black=True)
+    assert pilot.step(late + 0.3, line_black=True).vy == -1.0
+
+
+def test_recovery_does_not_overwrite_the_direction_it_escapes_from():
+    pilot, _ = make_pilot()
+    pilot.note_motion(0.0, DriveCommand(0.0, -1.0, 0.0, 0.4))
+    pilot.step(0.1, line_black=True)
+    pilot.note_motion(0.2, DriveCommand(0.0, 1.0, 0.0, 0.4))  # escape move
+    assert pilot.step(0.4, line_black=True).vy == 1.0
+
+
+def test_black_line_stops_backs_up_then_resumes_carrying():
     pilot, _ = make_pilot()
     pilot.carrying = True
     pilot.state = "CARRY"
     command = pilot.step(0.0, line_black=True)
+    assert command.speed == 0.0 and pilot.state == "LINE (stop)"
+    command = pilot.step(0.3, line_black=True)
     assert command.vy == -1.0 and pilot.state == "LINE (back up)"
-    pilot.step(0.7)
-    assert pilot.state == "LINE (turn)"
+    pilot.step(1.0)  # white again: backs up the margin, then turns
     pilot.step(1.2)
+    assert pilot.state == "LINE (turn)"
+    pilot.step(2.0)
     assert pilot.state.startswith("CARRY")
+
+
+def test_black_line_keeps_backing_up_while_still_on_black():
+    pilot, _ = make_pilot()
+    pilot.step(0.0, line_black=True)
+    for t in (0.3, 0.6, 0.9):  # still black: never reaches the turn yet
+        command = pilot.step(t, line_black=True)
+        assert command.vy == -1.0 and pilot.state == "LINE (back up)"
+    # Gives up backing after line_backup_max_s even if the sensor is stuck.
+    states = set()
+    for step in range(10, 30):
+        pilot.step(step * 0.1, line_black=True)
+        states.add(pilot.state)
+    assert "LINE (turn)" in states
+
+
+def test_reversing_onto_black_line_escapes_forward_without_turning_back():
+    pilot, _ = make_pilot()
+    pilot.note_motion(0.0, DriveCommand(0.0, -1.0, 0.0, 0.4))
+    assert pilot.step(0.1, line_black=True).speed == 0.0
+    assert pilot.step(0.4, line_black=True).vy == 1.0  # drives forward
+    pilot.step(1.0, line_black=False)  # resumes without spinning 180 deg back
+    assert not pilot.state.startswith("LINE")
 
 
 def test_approach_aligns_before_driving():
     pilot, vision = make_pilot()
     vision.det = Seen("red", 0.8, bearing_rad=0.5)
     command = pilot.step(0.0)
-    assert pilot.state == "ALIGN" and command.vy == 0.0 and command.vx != 0.0
+    assert pilot.state == "ALIGN" and command.vy == 0.0 and command.wz != 0.0
     vision.det = Seen("red", 0.8, bearing_rad=0.0)
     command = pilot.step(0.1)
     assert pilot.state == "APPROACH" and command.vy == 1.0

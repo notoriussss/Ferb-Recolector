@@ -16,10 +16,18 @@
   .row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; justify-content: center; }
   #st { font-family: ui-monospace, monospace; color: #aaa; }
   #st.off { color: #e57373; }
+  .line-box { width: min(100%, 640px); box-sizing: border-box; padding: 12px 16px;
+              border-radius: 8px; font-weight: 700; text-align: center;
+              font-family: ui-monospace, monospace; font-size: 16px;
+              border: 2px solid #444; background: #222; color: #ccc; transition: 0.1s; }
+  .line-box.white { background: #1b3a20; border-color: #4caf50; color: #a5d6a7; }
+  .line-box.black { background: #b71c1c; border-color: #ff5252; color: #fff;
+                    box-shadow: 0 0 14px rgba(255, 82, 82, 0.7); }
   .hint { color: #888; }
 </style></head><body>
 <h2 style="margin:0">Collector</h2>
 <img id="cam" src="/stream.mjpg" alt="camera">
+<div id="lineBox" class="line-box">Sensor de línea (GPIO 17): conectando…</div>
 <div class="row">
   <div class="keys">
     <div class="k" data-k="q">Q</div><div class="k" data-k="w">W</div>
@@ -33,7 +41,7 @@
 </div>
 <div id="st">connecting…</div>
 <div class="hint">
-  W/S forward·back · A/D turn · Q/E strafe · P auto · R reset · space brake · Shift fast
+  W/S adelante·atrás · A/D izquierda·derecha · Q/E girar · P auto · R reset · space frenar · Shift rápido
 </div>
 <script>
 // Tunable values of the page, in one place.
@@ -46,6 +54,7 @@ const CONFIG = {
 
 const down = new Set();
 const spd = document.getElementById("spd"), st = document.getElementById("st");
+const lineBox = document.getElementById("lineBox");
 const autoBtn = document.getElementById("autoBtn"), nextBtn = document.getElementById("nextBtn");
 let autoCmd = null, resetCmd = false;
 spd.oninput = () => document.getElementById("spdv").textContent = spd.value;
@@ -74,13 +83,12 @@ document.querySelectorAll(".k").forEach(el => {
   el.onpointerup = el.onpointerleave = () => { down.delete(el.dataset.k); paint(); };
 });
 async function tick() {
-  // What the keys ask for: forward (W/S), turn (A/D), strafe (Q/E).
+  // What the keys ask for on the robot:
+  // W/S forward/back (vy), A/D strafe left/right (vx), Q/E spin CCW/CW (wz).
   const fwd = (down.has("w") ? 1 : 0) - (down.has("s") ? 1 : 0);
-  const turn = (down.has("a") ? 1 : 0) - (down.has("d") ? 1 : 0);
-  const side = (down.has("q") ? 1 : 0) - (down.has("e") ? 1 : 0);
-  // The robot's axes are swapped by how the motors are wired (measured on the robot):
-  // what the server calls vx turns, vy drives forward and wz strafes.
-  const vx = -turn, vy = fwd, wz = side;
+  const strafe = (down.has("a") ? 1 : 0) - (down.has("d") ? 1 : 0);
+  const spin = (down.has("q") ? 1 : 0) - (down.has("e") ? 1 : 0);
+  const vx = -strafe, vy = fwd, wz = spin;
   const speed = down.has("shift") ? CONFIG.shiftSpeed : spd.value / CONFIG.percentScale;
   const payload = { vx, vy, wz, speed };
   if (autoCmd !== null) { payload.auto = autoCmd; autoCmd = null; }
@@ -90,13 +98,27 @@ async function tick() {
     const s = await r.json();
     autoBtn.classList.toggle("on", !!s.auto);
     autoBtn.textContent = `Auto (P): ${s.auto ? "ON" : "OFF"}`;
+    const rawInfo = s.line_raw !== null && s.line_raw !== undefined ? ` (DO=${s.line_raw})` : "";
+    if (s.line === "BLACK" || s.line_black) {
+      lineBox.className = "line-box black";
+      lineBox.textContent = `⬛ LÍNEA NEGRA DETECTADA${rawInfo} — ¡Ve negro!`;
+    } else if (s.line === "white") {
+      lineBox.className = "line-box white";
+      lineBox.textContent = `⬜ PISO CLARO / BLANCO${rawInfo} — No ve negro`;
+    } else {
+      lineBox.className = "line-box";
+      lineBox.textContent = `⚠️ Sensor de línea: ${s.line}`;
+    }
     st.className = "";
     const tgt = s.target ? ` (${s.target})` : "";
     st.textContent = `state: ${s.state}${tgt} · delivered ${s.delivered} ` +
       `(picked ${s.collected}) · line ${s.line} · ` +
       `speed=${Math.round(speed * CONFIG.percentScale)}% · ` +
       `motors ${s.motors} · camera ${s.camera ? "yes" : "no"}`;
-  } catch (e) { st.className = "off"; st.textContent = "no connection to the robot"; }
+  } catch (e) {
+    st.className = "off"; st.textContent = "no connection to the robot";
+    lineBox.className = "line-box"; lineBox.textContent = "Sin conexión con el robot";
+  }
 }
 setInterval(tick, CONFIG.pollIntervalMs);
 </script></body></html>

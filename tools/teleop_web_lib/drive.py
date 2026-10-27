@@ -9,7 +9,13 @@ Use it with the wheels off the ground or a hand near the switch.
 import threading
 import time
 
-from teleop_web_lib.autopilot import STOP, AutoPilot, DriveCommand, Vision
+from teleop_web_lib.autopilot import (
+    PREFIX_LINE,
+    STOP,
+    AutoPilot,
+    DriveCommand,
+    Vision,
+)
 from teleop_web_lib.config import AutoConfig
 from teleop_web_lib.kinematics import WHEELS, clamp, mecanum_wheel_ratios
 
@@ -51,6 +57,7 @@ class Drive:
         self._line = line_sensor  # None = no line sensor
         self._pilot = AutoPilot(auto_cfg or AutoConfig())
         self.line_black = False
+        self.line_raw: int | None = None
         self._lock = threading.Lock()
         self._cmd = DriveCommand()  # last manual command
         self._stamp = 0.0
@@ -103,6 +110,8 @@ class Drive:
                 "collected": pilot.collected_count,
                 "delivered": pilot.delivered_count,
                 "line": self._line_label(),
+                "line_black": self.line_black,
+                "line_raw": self.line_raw,
             }
 
     def _line_label(self) -> str:
@@ -120,8 +129,15 @@ class Drive:
         """
         while self._running:
             now = time.monotonic()
-            self.line_black = self._line is not None and self._line.is_black()
+            if self._line is not None:
+                self.line_raw = self._line.raw_value()
+                self.line_black = self._line.is_black()
+            else:
+                self.line_raw = None
+                self.line_black = False
             command = self._next_command(now)
+            with self._lock:
+                self._pilot.note_motion(now, command)
             scale = command.speed * self._max_duty
             ratios = mecanum_wheel_ratios(command.vx, command.vy, command.wz)
             self._motors.set({w: r * scale for w, r in ratios.items()})
@@ -135,6 +151,10 @@ class Drive:
             manual = self._cmd
             expired = now - self._stamp > self._timeout_s
             manual_active = not expired and any(manual[:AXIS_COUNT])
+            if self._pilot.state.startswith(PREFIX_LINE) or (
+                self.line_black and (self._pilot.enabled or manual_active)
+            ):
+                return self._pilot.step(now, self.line_black)
             if manual_active:
                 self._pilot.mark_manual()
                 return manual
