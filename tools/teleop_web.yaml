@@ -42,9 +42,9 @@ camera:
   hflip: true
   # Part of the camera id that identifies the CSI port of the OV5647 (picamera2 only).
   picamera_id_hint: i2c@80000
-  target_colors: [yellow, red]
+  target_colors: [blue]
   # Colours of the delivery line: the robot carries picked cubes there.
-  zone_colors: [green, blue]
+  zone_colors: [green]
   # A blob of those colours counts as the line if it is larger than this area (px).
   zone_min_area_px: 300
   # ...and it is at least this many times longer than wide, so a green/blue cube is not the line.
@@ -54,9 +54,10 @@ camera:
 
 line_sensor:
   # GPIO (BCM) of the bottom TCRT5000's DO output. null = no sensor (black line not seen).
-  # Power it from 3.3 V, not 5 V. TODO measure which pin it is wired to.
-  pin: null
-  # DO value over the black tape (the usual module gives 1 on black, 0 on white). TODO test.
+  # Power it from 3.3 V, not 5 V. Wired like the ucab-multirobot repo: 40-pin header,
+  # signal on GPIO5 (pin 29), GND on pin 30, VCC on 3V3 (pin 1). The HAT does not use GPIO5.
+  pin: 5
+  # DO value over the black tape (the usual module gives 1 on black, 0 on white).
   black_value: 1
 
 auto:
@@ -74,8 +75,10 @@ auto:
   no_cubes_stop_s: 7.0
   # Time (s) driving straight blind at ~18.5 cm to push the cube into the scoop.
   scoop_push_s: 0.65
-  # Black line: back up for this long, then turn for this long, then resume.
-  line_backup_s: 0.6
+  # Black line: stop, move opposite to the approach direction, then turn inward.
+  line_stop_s: 0.2
+  line_backup_s: 0.5
+  line_backup_max_s: 0.9
   line_turn_s: 1.2
   line_speed: 0.35
   # Reaches the delivery line when it is this close or its lowest edge passes this row (px).
@@ -100,14 +103,13 @@ auto:
   # Smallest slow-down span (m), avoids dividing by a near-zero distance.
   min_slow_span_m: 0.05
 
-# Cube filter of this tool: looser than the ROS cube_detector (src/vision), because the
-# scoop may be in view and the camera is not calibrated as tightly.
+# Strict 3x3 cm cube filter: rejects large/flat/irregular blue objects.
 detection:
-  min_area_px: 60
-  min_size_ratio: 0.15
-  max_size_ratio: 6.0
+  min_area_px: 80
+  min_size_ratio: 0.50
+  max_size_ratio: 1.65
   ignore_touching_bottom: false
-  max_distance_m: 3.0
+  max_distance_m: 1.6
 
 server:
   host: 0.0.0.0
