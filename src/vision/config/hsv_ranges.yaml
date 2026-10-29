@@ -31,7 +31,19 @@
       min_size_ratio: 0.50       # seen width & height / expected 3x3 cm cube size at that distance
       max_size_ratio: 2.10
       ignore_touching_bottom: true   # the scoop shows at the bottom edge of the image
+      ignore_touching_sides: true    # cut by an edge: unknown size (a corner of the area is not a cube)
       max_distance_m: 1.6
+
+    # Delivery area (vision/zone.py): blue + green paper in a gap of the black line,
+    # flanked by a green (left) and a red (right) upright traffic-light landmark.
+    zone:
+      landmark_colors: [green, red]      # [left, right] seen from the arena
+      floor_colors: [blue, green]
+      landmark_min_area_px: 200
+      landmark_min_height_ratio: 1.2     # upright: taller than wide
+      floor_min_area_px: 1500            # TODO measure on the track
+      floor_min_flatness: 1.5            # paper on the floor looks wider than tall
+      ignore_margin_px: 80               # cubes this near the landmarks' bases are delivered
 
     publish_debug_image: true
 
