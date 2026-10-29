@@ -39,11 +39,20 @@ DEFAULT_MIN_ELONGATION = 3.0
 # Narrowest blob width considered when measuring elongation (avoids dividing
 # by a near-zero width).
 MIN_BLOB_WIDTH_PX = 1.0
-# A blob whose lowest row is within this many px of the image bottom touches it.
+# A blob whose lowest row is within this many px of the image bottom
+# touches it.
 BOTTOM_EDGE_MARGIN_PX = 1
 # Rows (counted up from the lowest one) averaged to find the aim column of
 # a line blob.
 REGION_NEAR_ROWS_PX = 3
+# Real height (m) of the coloured section of a traffic-light landmark.
+LANDMARK_HEIGHT_M = 0.095
+# Where the graph paper sits between the left (green) and right (red) landmarks.
+GATE_AIM_FRACTION = 0.38
+# Horizontal offset (in landmark heights) from a single visible landmark to
+# the paper.
+LEFT_LANDMARK_AIM_HEIGHTS = 2.4
+RIGHT_LANDMARK_AIM_HEIGHTS = 3.2
 
 # Binary mask values.
 MASK_ON = 255
@@ -96,6 +105,20 @@ class Region:
     bbox: tuple[int, int, int, int]
     bearing_rad: float
     distance_m: float
+
+
+@dataclass(frozen=True)
+class Marker:
+    """
+    An upright coloured landmark (e.g. one of the two traffic-light pieces
+    flanking the delivery area).
+    """
+
+    color: str
+    u: int  # centre column (px)
+    v: int  # lowest row (px), where it touches the floor
+    area_px: int
+    bbox: tuple[int, int, int, int]
 
 
 @dataclass
@@ -171,6 +194,82 @@ class ColorDetector:
         if best is None:
             return None, line_mask
         return self._region_from_contour(*best), line_mask
+
+    def find_marker(
+        self,
+        bgr: np.ndarray,
+        color: str,
+        min_area_px: int,
+        min_height_ratio: float,
+    ) -> Marker | None:
+        """
+        The largest upright blob of `color` (taller than wide by at least
+        `min_height_ratio`), so a cube of the same colour is not mistaken for
+        a landmark.
+        """
+        hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+        best: Marker | None = None
+        for contour in self._contours_for(hsv, color):
+            area = cv2.contourArea(contour)
+            if area < min_area_px:
+                continue
+            x, y, w, h = cv2.boundingRect(contour)
+            if h < min_height_ratio * w:
+                continue
+            if best is None or area > best.area_px:
+                best = Marker(
+                    color,
+                    x + w // 2,
+                    y + h - 1,
+                    int(area),
+                    (x, y, w, h),
+                )
+        return best
+
+    def gate_between(
+        self,
+        left: Marker | None,
+        right: Marker | None,
+    ) -> Region | None:
+        """
+        The delivery area (graph paper) located from the two traffic-light
+        landmarks (`left` green, `right` red), or from whichever one is in
+        view when the robot is close enough that both no longer fit in the
+        frame.
+        """
+        cam = self.camera
+        if left is not None and right is not None:
+            if left.u >= right.u:
+                return None
+            u = round(left.u + GATE_AIM_FRACTION * (right.u - left.u))
+            v = (left.v + right.v) // 2
+            h = (left.bbox[3] + right.bbox[3]) / 2.0
+            x0 = min(left.bbox[0], right.bbox[0])
+            y0 = min(left.bbox[1], right.bbox[1])
+            x1 = max(left.bbox[0] + left.bbox[2], right.bbox[0] + right.bbox[2])
+            y1 = max(left.bbox[1] + left.bbox[3], right.bbox[1] + right.bbox[3])
+            bbox = (x0, y0, x1 - x0, y1 - y0)
+            area = left.area_px + right.area_px
+        elif left is not None:
+            h = float(left.bbox[3])
+            u = min(
+                cam.width_px - 1,
+                round(left.u + LEFT_LANDMARK_AIM_HEIGHTS * h),
+            )
+            v = left.v
+            bbox = left.bbox
+            area = left.area_px
+        elif right is not None:
+            h = float(right.bbox[3])
+            u = max(0, round(right.u - RIGHT_LANDMARK_AIM_HEIGHTS * h))
+            v = right.v
+            bbox = right.bbox
+            area = right.area_px
+        else:
+            return None
+        bearing_rad = math.atan2((cam.width_px / 2.0 - u), cam.focal_px)
+        distance_m = cam.focal_px * LANDMARK_HEIGHT_M / max(1.0, h)
+        return Region("gate", u, v, area, bbox, bearing_rad, distance_m)
 
     def _contours_for(self, hsv: np.ndarray, color: str) -> list:
         """
