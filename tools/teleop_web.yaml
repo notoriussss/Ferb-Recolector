@@ -43,16 +43,9 @@ camera:
   # Part of the camera id that identifies the CSI port of the OV5647 (picamera2 only).
   picamera_id_hint: i2c@80000
   target_colors: [yellow]
-  # Delivery area = the gap between two upright landmarks (traffic-light pieces)
-  # flanking the graph paper under the arm: [left, right] seen from the arena.
-  gate_colors: [green, red]
-  # A landmark is the largest blob of its colour above this area (px) and at
-  # least this many times taller than wide, so a cube is not taken for one.
-  gate_min_area_px: 200
-  gate_min_height_ratio: 1.2
-  # Cubes between the landmarks (no nearer than their bases + this many px)
-  # are already on the paper and are not picked up again.
-  gate_ignore_margin_px: 80
+  # The delivery area (blue + green paper between the green and red landmarks)
+  # is located with the `zone` section of src/vision/config/hsv_ranges.yaml,
+  # shared with the ROS cube_detector.
 
 line_sensor:
   # GPIO (BCM) of the bottom TCRT5000's DO output. null = no sensor (black line not seen).
@@ -84,10 +77,14 @@ auto:
   line_backup_max_s: 0.9
   line_turn_s: 1.2
   line_speed: 0.35
-  # Delivery: aligned with the gate and this close (m) to the midpoint of the
-  # landmarks, it drives blind straight onto the paper for deliver_push_s.
+  # Delivery: aligned with the area and arrived, it drives blind straight onto
+  # the paper for deliver_push_s. Only the landmarks in view: arrived this close
+  # (m) to them or with them this low in the image (px).
   zone_stop_distance_m: 0.42
   zone_arrive_v_px: 478
+  # Area paper in view: arrived when its near edge is this close or this low.
+  floor_stop_distance_m: 0.19
+  floor_arrive_v_px: 445
   # Then back up leaving the cube and turn to look for the next one.
   deliver_push_s: 1.4
   deliver_backup_s: 1.6
