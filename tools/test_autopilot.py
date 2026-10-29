@@ -83,6 +83,136 @@ def test_pick_carry_deliver_and_count():
     assert pilot.state.startswith("EXPLORE")
 
 
+def test_line_hit_during_the_delivery_push_counts_the_delivery():
+    pilot, vision = make_pilot()
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    vision.zone = Seen("blue", 0.18)
+    pilot.step(0.0)
+    assert pilot.state == "DROP"
+    pilot.step(0.2, line_black=True)
+    assert pilot.delivered_count == 1 and not pilot.carrying
+    vision.zone = None
+    for step in range(1, 100):
+        pilot.step(step * 0.1)
+    assert not pilot.state.startswith("CARRY")
+
+
+def test_line_hit_while_carrying_leaves_the_cube_and_searches_again():
+    pilot, _ = make_pilot()
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    pilot.step(0.0, line_black=True)
+    assert not pilot.carrying and pilot.delivered_count == 0
+    for step in range(1, 100):
+        pilot.step(step * 0.1)
+    assert not pilot.state.startswith("CARRY")
+
+
+def test_gives_up_carrying_when_the_gate_is_never_found():
+    pilot, _ = make_pilot()
+    pilot.configure(now=0.0, enabled=True, reset=True)  # search clock at 0
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    timeout_s = pilot.cfg.carry_zone_timeout_s
+    pilot.step(timeout_s - 1.0)
+    assert pilot.carrying
+    assert pilot.step(timeout_s + 0.1).speed == 0.0
+    assert not pilot.carrying and pilot.state == "SEARCH"
+
+
+def test_a_line_hit_while_going_for_a_cube_ignores_cubes_for_a_while():
+    pilot, vision = make_pilot()
+    vision.det = Seen("red", 0.5)
+    pilot.step(0.0)
+    assert pilot.state == "APPROACH"
+    pilot.step(0.1, line_black=True)  # reached the border line
+    ban_s = pilot.cfg.line_cube_ban_s
+    for step in range(3, 30):
+        pilot.step(step * 0.1)
+    assert pilot.state.startswith("EXPLORE")  # the cube is still in view
+    pilot.step(0.1 + ban_s + 1.0)
+    assert pilot.state in ("APPROACH", "ALIGN")  # ban over: tries again
+
+
+def test_close_to_the_cube_a_small_bearing_error_does_not_realign():
+    pilot, vision = make_pilot()
+    tolerance_rad = pilot.cfg.align_tolerance_rad
+    # Past the normal tolerance but within the widened one.
+    bearing_rad = tolerance_rad * 1.2
+    vision.det = Seen("red", 0.8, bearing_rad=bearing_rad)
+    pilot.step(0.0)
+    assert pilot.state == "ALIGN"  # far: turns to face it
+    vision.det = Seen("red", 0.25, bearing_rad=bearing_rad)
+    assert pilot.step(0.1).vy == 1.0 and pilot.state == "APPROACH"
+
+
+def test_a_far_cube_that_flickers_out_keeps_the_heading_without_backing_up():
+    pilot, vision = make_pilot()
+    vision.det = Seen("red", 0.8, bearing_rad=0.5)  # far, to the left
+    pilot.step(0.0)
+    vision.det = None
+    assert pilot.step(0.1).speed == 0.0  # waits briefly first
+    command = pilot.step(0.7)
+    assert pilot.state == "EXPLORE (reacquire)"
+    assert command.vy == 0.0 and command.wz == 1.0  # turns toward it
+    after_s = pilot.cfg.reacquire_s + 0.1
+    pilot.step(after_s)
+    assert pilot.state != "EXPLORE (reacquire)"  # memory expired: roams
+
+
+def test_a_lost_cube_straight_ahead_is_approached_not_forgotten():
+    pilot, vision = make_pilot()
+    vision.det = Seen("red", 0.8, bearing_rad=0.0)
+    pilot.step(0.0)
+    vision.det = None
+    pilot.step(0.1)
+    command = pilot.step(0.7)
+    assert pilot.state == "EXPLORE (reacquire)" and command.vy == 1.0
+
+
+def test_backs_up_once_to_uncover_a_cube_that_vanished_from_view():
+    pilot, vision = make_pilot()
+    vision.det = Seen("red", 0.25)  # close: may be under the scoop
+    pilot.step(0.0)
+    vision.det = None
+    assert pilot.step(0.1).speed == 0.0  # waits briefly first
+    command = pilot.step(0.7)
+    assert command.vy == -1.0 and pilot.state == "EXPLORE (back up)"
+    later_s = 0.7 + pilot.cfg.reveal_backup_s + 0.1
+    command = pilot.step(later_s)
+    assert command.vy != -1.0 and pilot.state != "EXPLORE (back up)"
+
+
+def test_never_roams_forward_toward_a_close_gate_without_a_cube():
+    pilot, vision = make_pilot()
+    near_m = pilot.cfg.gate_avoid_distance_m - 0.1
+    vision.zone = Seen("green", near_m, bearing_rad=0.3)  # to the left
+    command = pilot.step(0.0)
+    assert pilot.state == "EXPLORE (avoid gate)"
+    assert command.vy == 0.0 and command.wz == -1.0  # turns right, away
+
+
+def test_roams_normally_while_the_gate_is_far():
+    pilot, vision = make_pilot()
+    pilot.configure(now=0.0, enabled=True, reset=True)  # search clock at 0
+    far_m = pilot.cfg.gate_avoid_distance_m + 0.5
+    vision.zone = Seen("green", far_m)
+    pilot.step(0.0)  # the first move is the back-up that uncovers cubes
+    after_backup_s = pilot.cfg.reveal_backup_s + 0.1
+    assert pilot.step(after_backup_s).vy == 1.0
+    assert pilot.state == "EXPLORE (forward)"
+
+
+def test_backs_up_first_when_auto_restarts_without_a_cube():
+    pilot, _ = make_pilot()
+    pilot.configure(now=0.0, enabled=True, reset=True)
+    assert pilot.step(0.0).vy == -1.0
+    pilot.mark_manual()  # a nudge by hand, then Auto takes over again
+    assert pilot.step(5.0).vy == -1.0
+    assert pilot.state == "EXPLORE (back up)"
+
+
 def test_black_line_moves_away_opposite_to_the_last_motion():
     cases = [
         (
@@ -126,7 +256,7 @@ def test_recovery_does_not_overwrite_the_direction_it_escapes_from():
     assert pilot.step(0.4, line_black=True).vy == 1.0
 
 
-def test_black_line_stops_backs_up_then_resumes_carrying():
+def test_black_line_stops_backs_up_then_searches_without_the_lost_cube():
     pilot, _ = make_pilot()
     pilot.carrying = True
     pilot.state = "CARRY"
@@ -138,7 +268,8 @@ def test_black_line_stops_backs_up_then_resumes_carrying():
     pilot.step(1.2)
     assert pilot.state == "LINE (turn)"
     pilot.step(2.0)
-    assert pilot.state.startswith("CARRY")
+    # The cube stayed on the border: nothing left to carry.
+    assert not pilot.carrying and pilot.state.startswith("EXPLORE")
 
 
 def test_black_line_keeps_backing_up_while_still_on_black():
