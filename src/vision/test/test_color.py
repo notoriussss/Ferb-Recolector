@@ -143,3 +143,24 @@ def test_find_region_ignores_a_cube_of_the_line_colour():
         min_area_px=300,
     )
     assert region is None and not mask.any()
+
+
+def test_find_marker_and_gate_between_two_landmarks():
+    img = blank()
+    # Left upright blue landmark and right upright red landmark.
+    paint_hsv(img, 140, 200, 30, 80, (110, 200, 200))
+    paint_hsv(img, 460, 200, 30, 80, (2, 200, 180))
+    det = ColorDetector(RANGES, CAM)
+    left = det.find_marker(img, "blue", min_area_px=250, min_height_ratio=1.4)
+    right = det.find_marker(img, "red", min_area_px=250, min_height_ratio=1.4)
+    assert left is not None and right is not None
+    gate = det.gate_between(left, right)
+    assert gate is not None
+    assert gate.color == "gate"
+    assert 260 <= gate.u <= 300
+    assert 275 <= gate.v <= 280
+    # Swapped order (left on the right) is rejected.
+    assert det.gate_between(right, left) is None
+    # Single visible landmark still aims toward the paper.
+    assert det.gate_between(left, None) is not None
+    assert det.gate_between(None, right) is not None
