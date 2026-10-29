@@ -39,6 +39,11 @@ STATE_LINE_BACKUP = "LINE (back up)"
 STATE_LINE_TURN = "LINE (turn)"
 STATE_DROP_BACKUP = "DROP (back up)"
 STATE_DROP_TURN = "DROP (turn)"
+STATE_EXPLORE_BACKUP = "EXPLORE (back up)"
+STATE_EXPLORE_AVOID = "EXPLORE (avoid gate)"
+STATE_EXPLORE_REACQUIRE = "EXPLORE (reacquire)"
+# States in which the robot is going for a cube or pushing it.
+CHASE_STATES = (STATE_APPROACH, STATE_ALIGN, STATE_CATCH)
 # Prefixes used to recognise a family of states.
 PREFIX_LINE = "LINE"
 PREFIX_DROP = "DROP"
@@ -159,6 +164,13 @@ class AutoPilot:
         self._last_seen_s: float | None = None
         self._search_start_s = time.monotonic()
         self._search_dir = DIR_LEFT
+        # A cube was seen and has not been caught: if it vanishes from view
+        # it may be hidden under the scoop, so back up once to uncover it.
+        self._reveal_pending = False
+        self._reveal_until = 0.0
+        self._last_bearing_rad = 0.0
+        # Cubes are ignored until then: the last one led to the border line.
+        self._ignore_cubes_until = 0.0
 
     # ---------- mode control ----------
     def configure(
@@ -179,6 +191,7 @@ class AutoPilot:
             self.state = (
                 STATE_CARRY if self.carrying and not reset else STATE_SEARCH
             )
+            self._reveal_pending = self.state == STATE_SEARCH
             self._search_start_s = now
             if reset:
                 self.collected_count = 0
@@ -225,9 +238,11 @@ class AutoPilot:
 
     def _resume_after_pause(self, now: float) -> None:
         """
-        Continue carrying if a cube is in the scoop, else search.
+        Continue carrying if a cube is in the scoop, else search (backing
+        up first: a cube may be sitting in the scoop's blind spot).
         """
         self.state = STATE_CARRY if self.carrying else STATE_SEARCH
+        self._reveal_pending = not self.carrying
         self._search_start_s = now
 
     # ---------- timed phases (return None when not active) ----------
@@ -239,6 +254,8 @@ class AutoPilot:
         forward, already facing the arena), then resume what it was doing.
         """
         cfg = self.cfg
+        self._ban_cubes_if_chasing_one(now)
+        self._settle_cube_on_line()
         if not self.enabled:
             self._resume_state = STATE_PAUSED
         elif self.carrying:
@@ -256,6 +273,40 @@ class AutoPilot:
         turn_s = cfg.line_turn_s if needs_turn else 0.0
         self._line_turn_until = self._phase_until + turn_s
         self.target_info = None
+
+    def _ban_cubes_if_chasing_one(self, now: float) -> None:
+        """
+        A line hit while going for a cube, pushing one or carrying one means
+        that cube is at the border, where the scoop cannot bring it back:
+        ignore cubes for a while so the robot does not hit the line again.
+        """
+        chasing = self.state in CHASE_STATES or (
+            self.carrying and not self.state.startswith(PREFIX_DROP)
+        )
+        if not chasing:
+            return
+        self._ignore_cubes_until = now + self.cfg.line_cube_ban_s
+        self._last_seen_s = None
+        self._reveal_pending = False
+
+    def _settle_cube_on_line(self) -> None:
+        """
+        A line hit while carrying: during the delivery push the cube is
+        already in the area (count it); anywhere else it was pushed over
+        the border and stays behind, so the robot is no longer carrying.
+        """
+        if self.state.startswith(PREFIX_DROP):
+            self._finish_drop()
+        else:
+            self.carrying = False
+
+    def _finish_drop(self) -> None:
+        """
+        The cube is on the delivery area: stop carrying it and count it.
+        """
+        if self.carrying:
+            self.carrying = False
+            self.delivered_count += 1
 
     def note_motion(self, now: float, command: DriveCommand) -> None:
         """
@@ -333,6 +384,7 @@ class AutoPilot:
             return _forward(self.cfg.forward_speed)
         self.collected_count += 1
         self.carrying = True
+        self._reveal_pending = False
         self.state = STATE_CARRY
         self._search_start_s = now
         return STOP
@@ -347,9 +399,7 @@ class AutoPilot:
         cfg = self.cfg
         if now < self._phase_until:
             return _forward(cfg.forward_speed)
-        if self.carrying:
-            self.carrying = False
-            self.delivered_count += 1
+        self._finish_drop()
         backup_until = self._phase_until + cfg.deliver_backup_s
         if now < backup_until:
             self.state = STATE_DROP_BACKUP
@@ -368,13 +418,15 @@ class AutoPilot:
         """
         cfg = self.cfg
         det = None
-        if self.vision is not None:
+        if self.vision is not None and now >= self._ignore_cubes_until:
             det = self.vision.latest_detection(now, cfg.lost_timeout_s)
         if det is None:
             return self._no_cube_step(now)
 
         self.target_info = f"{det.color} {det.distance_m * CM_PER_M:.0f}cm"
         self._last_seen_s = now
+        self._last_bearing_rad = det.bearing_rad
+        self._reveal_pending = det.distance_m <= cfg.reveal_max_distance_m
         self._search_start_s = now
         self._search_dir = _side_of(det.bearing_rad)
 
@@ -414,19 +466,61 @@ class AutoPilot:
             else:
                 self.state = STATE_NO_CUBES
             return STOP
-        return self._roam(now, STATE_EXPLORE)
+        return self._scan_step(now)
+
+    def _scan_step(self, now: float) -> DriveCommand:
+        """
+        Nothing in view: back up once to uncover a cube hidden under the
+        scoop, never drive toward the delivery gate without a cube (past it
+        there is no border line to stop at), else roam.
+        """
+        cfg = self.cfg
+        if self._reveal_pending:
+            self._reveal_pending = False
+            self._reveal_until = now + cfg.reveal_backup_s
+        if now < self._reveal_until:
+            self.state = STATE_EXPLORE_BACKUP
+            return _backward(cfg.line_speed)
+        zone = self._zone_in_view(now)
+        if zone is not None and zone.distance_m <= cfg.gate_avoid_distance_m:
+            self.state = STATE_EXPLORE_AVOID
+            return _turn(-_side_of(zone.bearing_rad), cfg.search_turn_speed)
+        return self._reacquire_step(now) or self._roam(now, STATE_EXPLORE)
+
+    def _reacquire_step(self, now: float) -> DriveCommand | None:
+        """
+        A cube was seen a moment ago and is gone: keep heading where it was
+        (turn toward its side, or creep forward if it was straight ahead)
+        instead of wandering off. None once the memory has expired.
+        """
+        cfg = self.cfg
+        seen_s = self._last_seen_s
+        if seen_s is None or now - seen_s >= cfg.reacquire_s:
+            return None
+        self.state = STATE_EXPLORE_REACQUIRE
+        if abs(self._last_bearing_rad) <= cfg.align_tolerance_rad:
+            return _forward(cfg.roam_forward_speed)
+        return _turn(_side_of(self._last_bearing_rad), cfg.search_turn_speed)
+
+    def _zone_in_view(self, now: float):
+        """
+        The delivery gate seen less than `lost_timeout_s` ago, or None.
+        """
+        if self.vision is None:
+            return None
+        return self.vision.latest_zone(now, self.cfg.lost_timeout_s)
 
     # ---------- carrying to the delivery gate ----------
     def _carry_step(self, now: float) -> DriveCommand:
         """
         With a cube in the scoop: find the gate between the landmarks and drive
-        through it.
+        through it. If the gate is never found, assume the cube was lost.
         """
         cfg = self.cfg
-        zone = None
-        if self.vision is not None:
-            zone = self.vision.latest_zone(now, cfg.lost_timeout_s)
+        zone = self._zone_in_view(now)
         if zone is None:
+            if now - self._search_start_s >= cfg.carry_zone_timeout_s:
+                return self._give_up_carrying(now)
             self.target_info = TARGET_LOOKING_FOR_ZONE
             return self._roam(now, STATE_CARRY)
 
@@ -447,6 +541,17 @@ class AutoPilot:
             stop_distance_m,
             STATE_CARRY,
         )
+
+    def _give_up_carrying(self, now: float) -> DriveCommand:
+        """
+        The gate was not found in time: the cube slipped out of the scoop,
+        so go back to looking for cubes.
+        """
+        self.carrying = False
+        self.state = STATE_SEARCH
+        self.target_info = None
+        self._search_start_s = now
+        return STOP
 
     def _zone_thresholds(self, zone) -> tuple[float, int]:
         """
@@ -491,7 +596,10 @@ class AutoPilot:
         which causes sideways drift).
         """
         cfg = self.cfg
-        if abs(bearing) > cfg.align_tolerance_rad:
+        tolerance_rad = cfg.align_tolerance_rad
+        if distance <= cfg.close_align_distance_m:
+            tolerance_rad *= cfg.close_align_factor
+        if abs(bearing) > tolerance_rad:
             if label == STATE_APPROACH:
                 self.state = STATE_ALIGN
             else:
