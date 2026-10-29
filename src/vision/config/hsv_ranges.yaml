@@ -9,12 +9,12 @@
 
 /**/cube_detector:
   ros__parameters:
-    color_names: [blue]
+    color_names: [yellow]
     hsv:
-      red:    [0, 110, 100, 6, 255, 255, 173, 110, 100, 179, 255, 255]
+      red:    [0, 110, 80, 8, 255, 255, 165, 110, 80, 179, 255, 255]
       orange: [8, 120, 100, 18, 255, 255]
-      yellow: [20, 100, 100, 35, 255, 255]
-      green:  [45, 80, 50, 90, 255, 255]
+      yellow: [20, 80, 100, 36, 255, 255]
+      green:  [45, 80, 50, 92, 255, 255]
       blue:   [103, 120, 70, 128, 255, 255]
       purple: [145, 60, 40, 171, 255, 255]
 
@@ -29,9 +29,21 @@
       min_area_px: 80
       cube_size_m: 0.030
       min_size_ratio: 0.50       # seen width & height / expected 3x3 cm cube size at that distance
-      max_size_ratio: 1.65
+      max_size_ratio: 2.10
       ignore_touching_bottom: true   # the scoop shows at the bottom edge of the image
+      ignore_touching_sides: true    # cut by an edge: unknown size (a corner of the area is not a cube)
       max_distance_m: 1.6
+
+    # Delivery area (vision/zone.py): blue + green paper in a gap of the black line,
+    # flanked by a green (left) and a red (right) upright traffic-light landmark.
+    zone:
+      landmark_colors: [green, red]      # [left, right] seen from the arena
+      floor_colors: [blue, green]
+      landmark_min_area_px: 200
+      landmark_min_height_ratio: 1.2     # upright: taller than wide
+      floor_min_area_px: 1500            # TODO measure on the track
+      floor_min_flatness: 1.5            # paper on the floor looks wider than tall
+      ignore_margin_px: 80               # cubes this near the landmarks' bases are delivered
 
     publish_debug_image: true
 

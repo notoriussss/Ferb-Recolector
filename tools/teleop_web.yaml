@@ -42,15 +42,10 @@ camera:
   hflip: true
   # Part of the camera id that identifies the CSI port of the OV5647 (picamera2 only).
   picamera_id_hint: i2c@80000
-  target_colors: [blue]
-  # Colours of the delivery line: the robot carries picked cubes there.
-  zone_colors: [green]
-  # A blob of those colours counts as the line if it is larger than this area (px).
-  zone_min_area_px: 300
-  # ...and it is at least this many times longer than wide, so a green/blue cube is not the line.
-  zone_min_elongation: 3.0
-  # Cubes closer than this (px) to the line are already delivered and are not picked up again.
-  zone_ignore_margin_px: 25
+  target_colors: [yellow]
+  # The delivery area (blue + green paper between the green and red landmarks)
+  # is located with the `zone` section of src/vision/config/hsv_ranges.yaml,
+  # shared with the ROS cube_detector.
 
 line_sensor:
   # GPIO (BCM) of the bottom TCRT5000's DO output. null = no sensor (black line not seen).
@@ -61,7 +56,8 @@ line_sensor:
   black_value: 1
 
 auto:
-  enabled: true
+  # NEVER start in Auto: the operator turns it on from the page.
+  enabled: false
   # At ~16.5 cm the scoop hides the cube; at 18.5 cm (or the image bottom) the blind push starts.
   stop_distance_m: 0.185
   slow_down_distance_m: 0.45
@@ -81,12 +77,17 @@ auto:
   line_backup_max_s: 0.9
   line_turn_s: 1.2
   line_speed: 0.35
-  # Reaches the delivery line when it is this close or its lowest edge passes this row (px).
-  zone_stop_distance_m: 0.20
-  zone_arrive_v_px: 440
-  # Delivery: push blind, back up leaving the cube, and turn to look for the next one.
-  deliver_push_s: 0.5
-  deliver_backup_s: 0.8
+  # Delivery: aligned with the area and arrived, it drives blind straight onto
+  # the paper for deliver_push_s. Only the landmarks in view: arrived this close
+  # (m) to them or with them this low in the image (px).
+  zone_stop_distance_m: 0.42
+  zone_arrive_v_px: 478
+  # Area paper in view: arrived when its near edge is this close or this low.
+  floor_stop_distance_m: 0.19
+  floor_arrive_v_px: 445
+  # Then back up leaving the cube and turn to look for the next one.
+  deliver_push_s: 1.4
+  deliver_backup_s: 1.6
   deliver_turn_s: 2.0
   # A cube counts as at the scoop when its bottom edge passes this image row (px).
   scoop_arrive_v_px: 445
@@ -103,11 +104,11 @@ auto:
   # Smallest slow-down span (m), avoids dividing by a near-zero distance.
   min_slow_span_m: 0.05
 
-# Strict 3x3 cm cube filter: rejects large/flat/irregular blue objects.
+# Strict 3x3 cm cube filter: rejects large/flat/irregular objects.
 detection:
   min_area_px: 80
   min_size_ratio: 0.50
-  max_size_ratio: 1.65
+  max_size_ratio: 2.10
   ignore_touching_bottom: false
   max_distance_m: 1.6
 

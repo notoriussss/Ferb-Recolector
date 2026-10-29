@@ -205,7 +205,7 @@ class ObstacleGuardNode(Node):
             self._guard_params,
         )
         if vx == 0.0 and self._cmd.linear.x > 0.0:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 "forward blocked: obstacle nearby or no ultrasonic reading",
                 throttle_duration_sec=BLOCKED_WARN_THROTTLE_S,
             )

@@ -102,6 +102,49 @@ def test_ignores_blob_touching_bottom_edge():
     assert len(keep.detect(img)) <= 1
 
 
+def test_rejects_cube_sized_blob_cut_by_a_side_edge():
+    img = blank()
+    _, y, w, h = cube_box(320, 300)
+    # A corner of the blue delivery area peeking in at the left edge.
+    paint_hsv(img, 0, y, w, h, (114, 170, 160))
+    assert ColorDetector(RANGES, CAM).detect(img) == []
+    keep = ColorDetector(
+        RANGES,
+        CAM,
+        DetectionFilter(ignore_touching_sides=False),
+    )
+    assert len(keep.detect(img)) == 1
+
+
+def test_same_blob_away_from_the_edges_is_a_cube():
+    img = blank()
+    x, y, w, h = cube_box(320, 300)
+    paint_hsv(img, x, y, w, h, (114, 170, 160))
+    assert len(ColorDetector(RANGES, CAM).detect(img)) == 1
+
+
+def test_find_floor_area_joins_colours_side_by_side():
+    img = blank()
+    # Blue and green paper lying on the floor, wide and squashed.
+    paint_hsv(img, 200, 380, 120, 60, (114, 170, 160))
+    paint_hsv(img, 320, 380, 120, 60, (60, 170, 160))
+    ranges = {**RANGES, "green": parse_hsv_ranges([45, 80, 50, 92, 255, 255])}
+    det = ColorDetector({c: ranges[c] for c in ("blue", "green")}, CAM)
+    floor = det.find_floor_area(img, min_area_px=1500, min_flatness=1.5)
+    assert floor is not None
+    assert floor.color == "floor"
+    assert floor.bbox[2] >= 230  # both papers in one region
+    assert 300 <= floor.u <= 340
+
+
+def test_find_floor_area_ignores_a_cube():
+    img = blank()
+    x, y, w, h = cube_box(320, 300)
+    paint_hsv(img, x, y, w, h, (114, 170, 160))
+    det = ColorDetector({"blue": RANGES["blue"]}, CAM)
+    assert det.find_floor_area(img, min_area_px=1500, min_flatness=1.5) is None
+
+
 def test_rejects_blob_too_big_for_a_cube():
     img = blank()
     x, y, w, h = cube_box(320, 260)
@@ -143,3 +186,24 @@ def test_find_region_ignores_a_cube_of_the_line_colour():
         min_area_px=300,
     )
     assert region is None and not mask.any()
+
+
+def test_find_marker_and_gate_between_two_landmarks():
+    img = blank()
+    # Left upright blue landmark and right upright red landmark.
+    paint_hsv(img, 140, 200, 30, 80, (110, 200, 200))
+    paint_hsv(img, 460, 200, 30, 80, (2, 200, 180))
+    det = ColorDetector(RANGES, CAM)
+    left = det.find_marker(img, "blue", min_area_px=250, min_height_ratio=1.4)
+    right = det.find_marker(img, "red", min_area_px=250, min_height_ratio=1.4)
+    assert left is not None and right is not None
+    gate = det.gate_between(left, right)
+    assert gate is not None
+    assert gate.color == "gate"
+    assert 260 <= gate.u <= 300
+    assert 275 <= gate.v <= 280
+    # Swapped order (left on the right) is rejected.
+    assert det.gate_between(right, left) is None
+    # Single visible landmark still aims toward the paper.
+    assert det.gate_between(left, None) is not None
+    assert det.gate_between(None, right) is not None

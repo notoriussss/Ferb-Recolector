@@ -4,7 +4,17 @@ Tests: mecanum kinematics (forward, strafe, turn).
 
 import pytest
 
-from mobile_base.kinematics import MecanumGeometry, scale_to_limit, wheel_speeds
+from mobile_base.kinematics import (
+    MecanumGeometry,
+    scale_to_limit,
+    wheel_ratios,
+    wheel_speeds,
+)
+from mobile_base.motor_hardware import (
+    FakeMotors,
+    MotorHardwareParams,
+    to_duty,
+)
 
 GEO = MecanumGeometry(
     wheel_radius_m=0.0325, half_wheelbase_m=0.0605, half_track_m=0.0655
@@ -38,3 +48,29 @@ def test_scale_keeps_ratios():
 def test_scale_does_nothing_below_limit():
     s = {"fl": 1.0, "fr": -1.0, "rl": 0.5, "rr": 0.0}
     assert scale_to_limit(s, 5.0) == s
+
+
+def test_wheel_ratios_are_speed_over_max():
+    r = wheel_ratios(0.1, 0.0, 0.0, GEO, max_wheel_rad_s=10.0)
+    assert all(v == pytest.approx(0.1 / 0.0325 / 10.0) for v in r.values())
+
+
+def test_wheel_ratios_saturate_together():
+    r = wheel_ratios(1.0, 0.5, 0.0, GEO, max_wheel_rad_s=1.0)
+    assert max(abs(v) for v in r.values()) == pytest.approx(1.0)
+    assert r["fl"] == pytest.approx(r["rr"])
+
+
+def test_duty_is_capped_and_inverted():
+    assert to_duty(1.0, inverted=False, max_duty_ratio=0.9) == 0.9
+    assert to_duty(0.5, inverted=True, max_duty_ratio=0.9) == -0.45
+    assert to_duty(-3.0, inverted=False, max_duty_ratio=0.9) == -0.9
+
+
+def test_fake_motors_apply_inversion_per_wheel():
+    motors = FakeMotors(MotorHardwareParams(max_duty_ratio=1.0))
+    motors.set({"fl": 0.5, "fr": 0.5, "rl": 0.5, "rr": 0.5})
+    # fl and rl are inverted by default.
+    assert motors.duties == {"fl": -0.5, "fr": 0.5, "rl": -0.5, "rr": 0.5}
+    motors.stop()
+    assert all(d == 0.0 for d in motors.duties.values())

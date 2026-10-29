@@ -2,8 +2,9 @@
 Approach a cube of the target colours and stop at a given distance.
 
 This is the first piece of the state machine
-(SEARCH -> APPROACH -> ARRIVED), without the scoop. Pure logic, no rclpy:
-the behavior_fsm node passes in the cubes it sees and publishes the command.
+(SEARCH -> APPROACH -> ARRIVED); collector.py adds the scoop and the
+delivery on top. Pure logic, no rclpy: the behavior_fsm node passes in the
+cubes it sees and publishes the command.
 """
 
 import math
@@ -102,6 +103,15 @@ class ApproachController:
         self._last_seen_s: float | None = None
         self._search_dir = SEARCH_DIR_LEFT
 
+    def reset(self) -> None:
+        """
+        Forget the last target and search again (after a catch or a
+        delivery), keeping the search direction.
+        """
+        self.state = State.SEARCH
+        self.target = None
+        self._last_seen_s = None
+
     def pick_target(self, cubes: list[Cube]) -> Cube | None:
         """
         The nearest cube of the target colours.
@@ -167,26 +177,45 @@ class ApproachController:
         Turn toward the cube and drive at a speed that fades with distance
         and with the alignment error.
         """
-        p = self.params
-        wz = clamp(
-            p.turn_gain * cube.bearing_rad,
-            -p.max_turn_rad_s,
-            p.max_turn_rad_s,
+        return drive_toward(
+            cube.bearing_rad,
+            cube.distance_m,
+            self.params.stop_distance_m,
+            self.params,
         )
-        if abs(cube.bearing_rad) > p.align_tolerance_rad:
-            return Command(0.0, wz)
-        span_m = max(
-            MIN_SLOW_DOWN_SPAN_M,
-            p.slow_down_distance_m - p.stop_distance_m,
-        )
-        fraction = clamp(
-            (cube.distance_m - p.stop_distance_m) / span_m,
-            0.0,
-            1.0,
-        )
-        vx = p.min_forward_m_s + fraction * (
-            p.max_forward_m_s - p.min_forward_m_s
-        )
-        alignment_error = abs(cube.bearing_rad) / p.align_tolerance_rad
-        vx *= 1.0 - alignment_error * MAX_ALIGN_SLOWDOWN_FRACTION
-        return Command(vx, wz)
+
+
+def turn_toward(bearing_rad: float, p: ApproachParams) -> float:
+    """
+    Turn rate (rad/s) toward something at `bearing_rad` (positive = left).
+    """
+    return clamp(
+        p.turn_gain * bearing_rad,
+        -p.max_turn_rad_s,
+        p.max_turn_rad_s,
+    )
+
+
+def drive_toward(
+    bearing_rad: float,
+    distance_m: float,
+    stop_distance_m: float,
+    p: ApproachParams,
+) -> Command:
+    """
+    Turn toward a target and drive at a speed that fades with the distance
+    left to `stop_distance_m` and with the alignment error; turn in place
+    while the error is above `align_tolerance_rad`.
+    """
+    wz = turn_toward(bearing_rad, p)
+    if abs(bearing_rad) > p.align_tolerance_rad:
+        return Command(0.0, wz)
+    span_m = max(
+        MIN_SLOW_DOWN_SPAN_M,
+        p.slow_down_distance_m - stop_distance_m,
+    )
+    fraction = clamp((distance_m - stop_distance_m) / span_m, 0.0, 1.0)
+    vx = p.min_forward_m_s + fraction * (p.max_forward_m_s - p.min_forward_m_s)
+    alignment_error = abs(bearing_rad) / p.align_tolerance_rad
+    vx *= 1.0 - alignment_error * MAX_ALIGN_SLOWDOWN_FRACTION
+    return Command(vx, wz)

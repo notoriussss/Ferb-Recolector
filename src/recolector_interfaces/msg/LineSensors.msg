@@ -1,2 +1,5 @@
-# Reading of the 4 line sensors (fl, fr, rl, rr).
-# TODO (role 1 and role 3): define the fields.
+# Reading of the bottom line sensor (1x TCRT5000, between the front wheels).
+# The black tape is the border of the area; the delivery area is a gap in it.
+
+std_msgs/Header header
+bool black    # true when the sensor is over the black tape

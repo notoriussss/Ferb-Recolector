@@ -24,7 +24,10 @@ _STATE_MAP = {
     State.ARRIVED: FleetState.CAPTURE,
     State.CATCH: FleetState.CAPTURE,
     State.CARRY: FleetState.CARRY,
+    State.WAIT_ZONE: FleetState.CARRY,
+    State.DELIVER: FleetState.DELIVER,
     State.RELEASE: FleetState.DELIVER,
+    State.LINE_ESCAPE: FleetState.EXPLORE,
 }
 
 

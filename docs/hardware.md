@@ -23,7 +23,7 @@ Values marked **measure** come from photos or datasheets and must be confirmed w
 
 ## Pins (to be filled in)
 
-Fill in with what is measured on the HAT and copy the same numbers into `src/mobile_base/config/collector.yaml`.
+Fill in with what is measured on the HAT and copy the same numbers into `src/mobile_base/config/collector.yaml`. A pin left at `-1` there means "not wired": that node runs as a fake and warns.
 
 | Signal | GPIO (BCM) | Status |
 |---|---|---|
@@ -33,7 +33,7 @@ Fill in with what is measured on the HAT and copy the same numbers into `src/mob
 | Motor RL (M1) IN1 / IN2 | 17 / 27 | confirmed (DRV8833 #1 A) |
 | Motor RR (M2) IN1 / IN2 | 22 / 23 | confirmed (DRV8833 #1 B) |
 | Scoop servo | ? | measure |
-| Bottom TCRT5000 (DO, at 3.3 V) | ? | measure; goes in `tools/teleop_web.yaml` → `line_sensor.pin` |
+| Bottom TCRT5000 (DO, at 3.3 V) | 5 | wired (pin 29); in `tools/teleop_web.yaml` → `line_sensor.pin` and `collector.yaml` → `line_sensors.pin` |
 | HC-SR04 TRIG / ECHO | ? / ? | measure |
 | FC-51 | ? | measure |
 | I2C SDA / SCL | 2 / 3 | fixed on the Pi |
@@ -44,6 +44,7 @@ Fill in with what is measured on the HAT and copy the same numbers into `src/mob
 |---|---|---|
 | Board | ≈ 1.93 × 1.22 m (from the photo) | measure |
 | Tape width | ≈ 19 mm | measure |
-| Delivery square | ≈ 24 cm per side | measure |
+| Delivery area | blue + green paper in a gap of the line, ≈ 24 cm per side; green landmark on the left, red on the right | measure |
+| Line sensor over the area paper | must read white on blue and green | measure |
 | Cubes | 2.5 cm, ≈ 9.4 g | measure |
 | Colours | red, orange, yellow, green, blue, purple/maroon | confirm maroon |

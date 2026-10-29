@@ -167,7 +167,8 @@ def _collector_nodes(port: int, bridge_env: dict) -> list:
         Node(
             package=PACKAGE_MOBILE_BASE,
             executable="behavior_fsm",
-            parameters=[base_cfg],
+            # No zone arbiter in the simulation: deliver without a turn.
+            parameters=[base_cfg, {"require_zone_grant": False}],
             output="screen",
         ),
         Node(

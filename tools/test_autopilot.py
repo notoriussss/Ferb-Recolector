@@ -237,3 +237,20 @@ def test_the_real_vision_config_has_what_the_tool_needs():
     params = read_node_params(HSV_CONFIG_PATH, HSV_NODE_NAME)
     assert {"hsv", "camera", "filter"} <= set(params)
     assert {"hfov_rad", "height_m", "tilt_rad"} <= set(params["camera"])
+
+
+def test_area_paper_arrives_closer_than_the_landmarks():
+    pilot, vision = make_pilot()
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    # 30 cm from the landmarks: arrived.
+    vision.zone = Seen("gate", 0.30)
+    pilot.step(0.0)
+    assert pilot.state == "DROP"
+    pilot, vision = make_pilot()
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    # 30 cm from the near edge of the paper: keep driving.
+    vision.zone = Seen("floor", 0.30)
+    pilot.step(0.0)
+    assert pilot.state == "CARRY"

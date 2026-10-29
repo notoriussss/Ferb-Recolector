@@ -20,7 +20,7 @@ DEFAULT_ALIGN_TOLERANCE_RAD = 0.22
 DEFAULT_LOST_TIMEOUT_S = 0.6
 DEFAULT_NO_CUBES_STOP_S = 7.0
 DEFAULT_SCOOP_PUSH_S = 0.65
-DEFAULT_LINE_BACKUP_S = 0.6
+DEFAULT_LINE_BACKUP_S = 0.5
 DEFAULT_LINE_TURN_S = 1.2
 # Brake pause as soon as the black border is seen, before backing up.
 DEFAULT_LINE_STOP_S = 0.2
@@ -29,10 +29,14 @@ DEFAULT_LINE_BACKUP_MAX_S = 0.9
 # How recent the last movement must be for the line recovery to undo it.
 DEFAULT_LINE_MOTION_MEMORY_S = 1.5
 DEFAULT_LINE_SPEED = 0.35
-DEFAULT_ZONE_STOP_DISTANCE_M = 0.20
-DEFAULT_ZONE_ARRIVE_V_PX = 440
-DEFAULT_DELIVER_PUSH_S = 0.5
-DEFAULT_DELIVER_BACKUP_S = 0.8
+# Only the landmarks in view: arrived this far from them.
+DEFAULT_ZONE_STOP_DISTANCE_M = 0.42
+DEFAULT_ZONE_ARRIVE_V_PX = 478
+# Area paper in view: arrived when its near edge is this close or this low.
+DEFAULT_FLOOR_STOP_DISTANCE_M = 0.19
+DEFAULT_FLOOR_ARRIVE_V_PX = 445
+DEFAULT_DELIVER_PUSH_S = 1.4
+DEFAULT_DELIVER_BACKUP_S = 1.6
 DEFAULT_DELIVER_TURN_S = 2.0
 # Image row (px) from which a cube counts as at the scoop threshold.
 DEFAULT_SCOOP_ARRIVE_V_PX = 445
@@ -55,7 +59,7 @@ DEFAULT_MIN_SLOW_SPAN_M = 0.05
 DEFAULT_DETECTION_FILTER = {
     "min_area_px": 80,
     "min_size_ratio": 0.50,
-    "max_size_ratio": 1.65,
+    "max_size_ratio": 2.10,
     "ignore_touching_bottom": False,
     "max_distance_m": 1.6,
 }
@@ -104,6 +108,8 @@ class AutoConfig:
     line_speed: float = DEFAULT_LINE_SPEED
     zone_stop_distance_m: float = DEFAULT_ZONE_STOP_DISTANCE_M
     zone_arrive_v_px: int = DEFAULT_ZONE_ARRIVE_V_PX
+    floor_stop_distance_m: float = DEFAULT_FLOOR_STOP_DISTANCE_M
+    floor_arrive_v_px: int = DEFAULT_FLOOR_ARRIVE_V_PX
     deliver_push_s: float = DEFAULT_DELIVER_PUSH_S
     deliver_backup_s: float = DEFAULT_DELIVER_BACKUP_S
     deliver_turn_s: float = DEFAULT_DELIVER_TURN_S

@@ -1,14 +1,19 @@
 """
 cube_detector node: finds cubes by colour (HSV) in image_raw and publishes
-cubes.
+cubes, and locates the delivery area and publishes zone/seen.
 
-It also publishes cubes/debug_image: the same image with one box per cube,
-to view it in web_viewer or rqt_image_view.
+zone/seen reuses CubeDetectionArray: empty when the area is not in view,
+otherwise one entry whose `color` says how it was found ("floor" = the
+blue/green paper up close, "gate" = between the green and red landmarks)
+and whose bearing, distance, `v` and box describe the area. Cubes already
+inside the area are left out of cubes. See vision/zone.py.
 
-HSV ranges and camera geometry come from config/hsv_ranges.yaml. They can be
-changed at runtime with `ros2 param set /cube_detector ...`.
+It also publishes cubes/debug_image: the same image with one box per cube
+and the area, to view it in web_viewer or rqt_image_view.
 
-TODO: also locate the delivery square.
+HSV ranges, camera geometry and the `zone.*` parameters come from
+config/hsv_ranges.yaml. They can be changed at runtime with
+`ros2 param set /cube_detector ...`.
 """
 
 from dataclasses import dataclass, field
@@ -25,7 +30,7 @@ from recolector_interfaces.msg import CubeDetection, CubeDetectionArray
 from vision.camera_model import CameraModel, CameraParams
 from vision.color_detection import ColorDetector, DetectionFilter
 from vision.colors import COLOR_NAMES
-from vision.drawing import draw_detections
+from vision.drawing import draw_detections, draw_region
 from vision.hsv import parse_hsv_ranges
 from vision.ros_image import bgr_to_image, image_to_bgr
 from vision.topics import (
@@ -33,7 +38,9 @@ from vision.topics import (
     TOPIC_CUBES,
     TOPIC_CUBES_DEBUG_IMAGE,
     TOPIC_IMAGE_RAW,
+    TOPIC_ZONE_SEEN,
 )
+from vision.zone import ZoneLocator, ZoneParams, without_cubes_in_zone
 
 NODE_NAME = "cube_detector"
 
@@ -41,6 +48,7 @@ NODE_NAME = "cube_detector"
 HSV_PREFIX = "hsv."
 CAMERA_PREFIX = "camera."
 FILTER_PREFIX = "filter."
+ZONE_PREFIX = "zone."
 
 # Minimum time between two "bad image" errors.
 IMAGE_ERROR_THROTTLE_S = 5.0
@@ -49,8 +57,8 @@ IMAGE_ERROR_THROTTLE_S = 5.0
 @dataclass
 class CubeDetectorParams:
     """
-    Node-level parameters; the HSV ranges (`hsv.<colour>`), `camera.*` and
-    `filter.*` groups are declared separately.
+    Node-level parameters; the HSV ranges (`hsv.<colour>`), `camera.*`,
+    `filter.*` and `zone.*` groups are declared separately.
 
     Field names double as ROS parameter names (see recolector_common.params).
     """
@@ -61,7 +69,7 @@ class CubeDetectorParams:
 
 class CubeDetectorNode(Node):
     """
-    Runs the colour detector on every incoming image.
+    Runs the colour detector and the area locator on every incoming image.
     """
 
     def __init__(self):
@@ -70,8 +78,10 @@ class CubeDetectorNode(Node):
         """
         super().__init__(NODE_NAME)
         declare_params(self, CubeDetectorParams())
+        declare_params(self, ZoneParams(), prefix=ZONE_PREFIX)
         self._params = read_params(self, CubeDetectorParams())
-        for name in self._params.color_names:
+        zone_params = read_params(self, ZoneParams(), prefix=ZONE_PREFIX)
+        for name in self._hsv_names(zone_params):
             self.declare_parameter(
                 f"{HSV_PREFIX}{name}",
                 Parameter.Type.INTEGER_ARRAY,
@@ -80,6 +90,7 @@ class CubeDetectorNode(Node):
         declare_params(self, DetectionFilter(), prefix=FILTER_PREFIX)
 
         self._detector = None
+        self._zone_locator = None
         self._image_size = None
         self.add_on_set_parameters_callback(self._validate_params)
         self.add_post_set_parameters_callback(self._on_params_changed)
@@ -87,6 +98,11 @@ class CubeDetectorNode(Node):
         self._pub_cubes = self.create_publisher(
             CubeDetectionArray,
             TOPIC_CUBES,
+            DEFAULT_QOS_DEPTH,
+        )
+        self._pub_zone = self.create_publisher(
+            CubeDetectionArray,
+            TOPIC_ZONE_SEEN,
             DEFAULT_QOS_DEPTH,
         )
         self._pub_debug = self.create_publisher(
@@ -103,6 +119,17 @@ class CubeDetectorNode(Node):
         colors = ", ".join(self._params.color_names)
         self.get_logger().info(f"looking for cubes of colours: {colors}")
 
+    def _hsv_names(self, zone_params: ZoneParams) -> list[str]:
+        """
+        Every colour that needs an HSV range: cubes, landmarks and paper.
+        """
+        names = [
+            *self._params.color_names,
+            *zone_params.landmark_colors,
+            *zone_params.floor_colors,
+        ]
+        return list(dict.fromkeys(names))
+
     # ---------- parameters ----------
     def _validate_params(self, params):
         """
@@ -118,24 +145,36 @@ class CubeDetectorNode(Node):
 
     def _on_params_changed(self, _params):
         """
-        Drop the detector; it is rebuilt on the next frame.
+        Drop the detectors; they are rebuilt on the next frame.
         """
         self._params = read_params(self, CubeDetectorParams())
         self._detector = None
 
-    def _build_detector(self, width: int, height: int) -> ColorDetector:
+    def _read_ranges(self, names: list[str]) -> dict:
         """
-        Build a detector for images of the given size from the parameters.
+        Parsed HSV ranges of `names`; colours without a range are skipped.
         """
         ranges = {}
-        for name in self._params.color_names:
-            values = self.get_parameter(f"{HSV_PREFIX}{name}").value
+        for name in names:
+            param = f"{HSV_PREFIX}{name}"
+            if not self.has_parameter(param):
+                continue
+            values = self.get_parameter(param).value
             if not values:
-                self.get_logger().warn(
-                    f"colour '{name}' has no {HSV_PREFIX}{name} range; ignored"
+                self.get_logger().warning(
+                    f"colour '{name}' has no {param} range; ignored"
                 )
                 continue
             ranges[name] = parse_hsv_ranges(values)
+        return ranges
+
+    def _build_detectors(self, width: int, height: int):
+        """
+        Build the cube detector and the area locator for images of the
+        given size from the parameters.
+        """
+        zone_params = read_params(self, ZoneParams(), prefix=ZONE_PREFIX)
+        ranges = self._read_ranges(self._hsv_names(zone_params))
         camera_params = read_params(self, CameraParams(), prefix=CAMERA_PREFIX)
         camera = CameraModel(
             width_px=width,
@@ -145,12 +184,17 @@ class CubeDetectorNode(Node):
             tilt_rad=camera_params.tilt_rad,
         )
         filters = read_params(self, DetectionFilter(), prefix=FILTER_PREFIX)
-        return ColorDetector(ranges, camera, filters)
+        cube_ranges = {
+            c: ranges[c] for c in self._params.color_names if c in ranges
+        }
+        self._detector = ColorDetector(cube_ranges, camera, filters)
+        self._zone_locator = ZoneLocator(ranges, camera, zone_params)
 
     # ---------- image ----------
     def _on_image(self, msg: Image):
         """
-        Detect cubes in one image and publish them (and the debug image).
+        Detect cubes and the area in one image and publish them (and the
+        debug image).
         """
         try:
             bgr = image_to_bgr(msg)
@@ -162,16 +206,40 @@ class CubeDetectorNode(Node):
             return
         size = (msg.width, msg.height)
         if self._detector is None or self._image_size != size:
-            self._detector = self._build_detector(*size)
+            self._build_detectors(*size)
             self._image_size = size
 
-        detections = self._detector.detect(bgr)
+        zone = self._zone_locator.locate(bgr)
+        detections = without_cubes_in_zone(
+            self._detector.detect(bgr),
+            zone,
+            self._zone_locator.params.ignore_margin_px,
+        )
         self._pub_cubes.publish(_to_message(detections, msg.header))
+        zone_msg = CubeDetectionArray(header=msg.header)
+        if zone is not None:
+            zone_msg.cubes.append(_region_to_detection(zone))
+        self._pub_zone.publish(zone_msg)
 
         wants_debug = self._params.publish_debug_image
         if wants_debug and self._pub_debug.get_subscription_count() > 0:
             debug_image = draw_detections(bgr, detections)
+            if zone is not None:
+                draw_region(debug_image, zone)
             self._pub_debug.publish(bgr_to_image(debug_image, msg.header))
+
+
+def _region_to_detection(zone) -> CubeDetection:
+    """
+    The delivery area as a CubeDetection (its box as width and height).
+    """
+    out = CubeDetection()
+    out.color = zone.color
+    out.bearing_rad = float(zone.bearing_rad)
+    out.distance_m = float(zone.distance_m)
+    out.u, out.v = int(zone.u), int(zone.v)
+    out.width_px, out.height_px = int(zone.bbox[2]), int(zone.bbox[3])
+    return out
 
 
 def _to_message(detections, header) -> CubeDetectionArray:

@@ -8,6 +8,8 @@ Wheel order: fl, fr, rl, rr.
 from dataclasses import dataclass
 
 WHEELS = ("fl", "fr", "rl", "rr")
+# A wheel ratio of 1 is the wheel at its top speed.
+FULL_RATIO = 1.0
 
 
 @dataclass(frozen=True)
@@ -53,3 +55,22 @@ def scale_to_limit(
         return dict(speeds)
     factor = max_abs / peak
     return {name: v * factor for name, v in speeds.items()}
+
+
+def wheel_ratios(
+    vx: float,
+    vy: float,
+    wz: float,
+    geo: MecanumGeometry,
+    max_wheel_rad_s: float,
+) -> dict[str, float]:
+    """
+    Wheel commands in [-1, 1] (1 = `max_wheel_rad_s`) for a motion (m/s,
+    m/s, rad/s).
+
+    When one wheel would saturate, all of them are scaled down together so
+    the direction of motion is kept.
+    """
+    speeds = wheel_speeds(vx, vy, wz, geo)
+    ratios = {name: v / max_wheel_rad_s for name, v in speeds.items()}
+    return scale_to_limit(ratios, FULL_RATIO)

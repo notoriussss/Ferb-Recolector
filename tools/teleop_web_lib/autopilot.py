@@ -2,9 +2,13 @@
 Auto mode state machine for the browser tool. Pure logic: no hardware, no
 threads. Time is passed in as a float in seconds.
 
-Auto mode: find a target-colour cube, push it into the scoop, carry it to the
-green/blue delivery line, leave it there and count it. The bottom line sensor
-stops the robot at the black border (it backs up and turns inward).
+Auto mode: find a target-colour cube, push it into the scoop, carry it to
+the delivery area (blue and green paper in a gap of the line, between the
+green and red landmarks), leave it there and count it. The area comes from
+vision/zone.py: from the landmarks far away ("gate") or from the paper
+itself up close ("floor"), each with its own arrival thresholds. The
+bottom line sensor stops the robot at the black border (it backs up and
+turns inward).
 
 Axes: on the physical robot, `DriveCommand` maps to:
 - `vy > 0` = forward (W), `vy < 0` = backward/reverse (S)
@@ -55,6 +59,8 @@ FULL_AXIS = 1.0
 # --- Target descriptions shown in the page ------------------------------------
 TARGET_LOOKING_FOR_ZONE = "looking for zone"
 CM_PER_M = 100
+# Area estimate made from the area paper (vision/zone.py).
+ZONE_SOURCE_FLOOR = "floor"
 
 
 class DriveCommand(NamedTuple):
@@ -84,7 +90,7 @@ class Vision(Protocol):
 
     def latest_zone(self, now: float, timeout_s: float):
         """
-        The delivery line seen less than `timeout_s` ago, or None.
+        The delivery gate seen less than `timeout_s` ago, or None.
         """
 
 
@@ -140,7 +146,7 @@ class AutoPilot:
         self.state = STATE_PAUSED
         self.target_info: str | None = None
         self.collected_count = 0  # cubes pushed into the scoop
-        self.delivered_count = 0  # cubes left at the green/blue line
+        self.delivered_count = 0  # cubes left on the delivery paper
         self.carrying = False
         self._phase_until = 0.0
         self._line_turn_until = 0.0
@@ -410,10 +416,11 @@ class AutoPilot:
             return STOP
         return self._roam(now, STATE_EXPLORE)
 
-    # ---------- carrying to the delivery line ----------
+    # ---------- carrying to the delivery gate ----------
     def _carry_step(self, now: float) -> DriveCommand:
         """
-        With a cube in the scoop: find the green/blue line and drive to it.
+        With a cube in the scoop: find the gate between the landmarks and drive
+        through it.
         """
         cfg = self.cfg
         zone = None
@@ -428,10 +435,8 @@ class AutoPilot:
         )
         self._search_start_s = now
         self._search_dir = _side_of(zone.bearing_rad)
-        at_zone = (
-            zone.distance_m <= cfg.zone_stop_distance_m
-            or zone.v >= cfg.zone_arrive_v_px
-        )
+        stop_distance_m, arrive_v_px = self._zone_thresholds(zone)
+        at_zone = zone.distance_m <= stop_distance_m or zone.v >= arrive_v_px
         if at_zone and self._is_aligned(zone.bearing_rad):
             self.state = STATE_DROP
             self._phase_until = now + cfg.deliver_push_s
@@ -439,9 +444,18 @@ class AutoPilot:
         return self._steer_to(
             zone.bearing_rad,
             zone.distance_m,
-            cfg.zone_stop_distance_m,
+            stop_distance_m,
             STATE_CARRY,
         )
+
+    def _zone_thresholds(self, zone) -> tuple[float, int]:
+        """
+        Arrival distance (m) and image row (px) for this kind of estimate.
+        """
+        cfg = self.cfg
+        if zone.color == ZONE_SOURCE_FLOOR:
+            return cfg.floor_stop_distance_m, cfg.floor_arrive_v_px
+        return cfg.zone_stop_distance_m, cfg.zone_arrive_v_px
 
     # ---------- motion primitives ----------
     def _is_aligned(self, bearing_rad: float) -> bool:
