@@ -1,15 +1,14 @@
 """
 Launches all collector nodes on the Raspberry Pi.
 
-For now: camera, detector, web viewer, behavior_fsm (approach a cube),
-obstacle_guard and fleet_link.
+Camera, detector, web viewer, behavior_fsm, obstacle_guard, fleet_link and
+the hardware nodes (motor_driver, line_sensors, ultrasonic, scoop_driver,
+color_sensor).
 For safety, behavior_fsm starts paused: start it with the "Start" button in
 the web viewer or with enabled:=true.
 
-TODO (roles 1 and 4): add motor_driver, ultrasonic, line_sensors,
-scoop_driver and color_sensor once implemented. Without motor_driver the real
-robot does not move; without ultrasonic, obstacle_guard blocks forward
-motion.
+Hardware not wired yet (pins at -1 in config/collector.yaml) runs as a fake
+and warns. Without the HC-SR04 pins, obstacle_guard blocks forward motion.
 """
 
 import os
@@ -26,6 +25,14 @@ PACKAGE_MOBILE_BASE = "mobile_base"
 VISION_CONFIG_FILE = "hsv_ranges.yaml"
 BASE_CONFIG_FILE = "collector.yaml"
 CONFIG_DIR = "config"
+# Nodes that only need collector.yaml.
+HARDWARE_NODES = (
+    "motor_driver",
+    "line_sensors",
+    "ultrasonic",
+    "scoop_driver",
+    "color_sensor",
+)
 
 # Launch arguments and their defaults.
 DEFAULT_ROBOT = "ferb"
@@ -134,5 +141,9 @@ def generate_launch_description():
                     {"robot_name": ParameterValue(robot, value_type=str)},
                 ],
             ),
+            *[
+                _node(PACKAGE_MOBILE_BASE, executable, robot, [base_cfg])
+                for executable in HARDWARE_NODES
+            ],
         ]
     )
