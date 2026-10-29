@@ -92,7 +92,7 @@ class CameraNode(Node):
         """
         ok, frame = self._cap.read()
         if not ok:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 "no image from the camera",
                 throttle_duration_sec=NO_IMAGE_WARN_THROTTLE_S,
             )
