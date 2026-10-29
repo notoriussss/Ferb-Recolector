@@ -18,7 +18,7 @@ DEFAULT_TURN_SPEED = 0.38
 DEFAULT_SEARCH_TURN_SPEED = 0.32
 DEFAULT_ALIGN_TOLERANCE_RAD = 0.22
 DEFAULT_LOST_TIMEOUT_S = 0.6
-DEFAULT_NO_CUBES_STOP_S = 7.0
+DEFAULT_NO_CUBES_STOP_S = 20.0
 DEFAULT_SCOOP_PUSH_S = 0.65
 DEFAULT_LINE_BACKUP_S = 0.5
 DEFAULT_LINE_TURN_S = 1.2
@@ -52,6 +52,32 @@ DEFAULT_STEER_LIMIT = 0.7
 DEFAULT_MIN_SPEED_FRACTION = 0.35
 # Smallest slow-down span (m), avoids dividing by a near-zero distance.
 DEFAULT_MIN_SLOW_SPAN_M = 0.05
+# A cube seen and then lost from view may be under the scoop (blind spot):
+# back up this long to uncover it. 0 turns it off. Measured: 0.6 s at
+# line_speed backs up ~13 cm; a cube at 10 cm from the scoop was invisible
+# and showed up whole afterwards (it is lost from view below ~12 cm).
+DEFAULT_REVEAL_BACKUP_S = 0.6
+# Back up to uncover a lost cube only if it was last seen this close (m): a
+# far cube that flickers out of view is not hidden under the scoop.
+DEFAULT_REVEAL_MAX_DISTANCE_M = 0.35
+# After losing sight of a cube, keep heading where it was last seen for this
+# long before going back to roaming.
+DEFAULT_REACQUIRE_S = 1.5
+# A line hit while going for a cube or carrying one means the cube is at the
+# border: ignore cubes for this long so the robot goes elsewhere. TODO measure
+DEFAULT_LINE_CUBE_BAN_S = 8.0
+# Closer than this to its target, the alignment tolerance is widened by the
+# factor below (a few cm sideways is already a big angle up close). Keep the
+# factor under catch_align_factor, or the robot would drive up without
+# ever being allowed to catch. TODO measure
+DEFAULT_CLOSE_ALIGN_DISTANCE_M = 0.30
+DEFAULT_CLOSE_ALIGN_FACTOR = 1.3
+# Carrying a cube without ever seeing the delivery gate for this long: assume
+# the cube slipped out of the scoop. TODO measure
+DEFAULT_CARRY_ZONE_TIMEOUT_S = 15.0
+# Without a cube in view, do not roam forward with the gate this close.
+# TODO measure
+DEFAULT_GATE_AVOID_DISTANCE_M = 0.6
 
 # --- Vision filter used by this tool (section `detection` overrides) ----------
 # Looser than the ROS cube_detector because this tool's camera is not
@@ -120,6 +146,14 @@ class AutoConfig:
     steer_limit: float = DEFAULT_STEER_LIMIT
     min_speed_fraction: float = DEFAULT_MIN_SPEED_FRACTION
     min_slow_span_m: float = DEFAULT_MIN_SLOW_SPAN_M
+    reveal_backup_s: float = DEFAULT_REVEAL_BACKUP_S
+    reveal_max_distance_m: float = DEFAULT_REVEAL_MAX_DISTANCE_M
+    reacquire_s: float = DEFAULT_REACQUIRE_S
+    line_cube_ban_s: float = DEFAULT_LINE_CUBE_BAN_S
+    close_align_distance_m: float = DEFAULT_CLOSE_ALIGN_DISTANCE_M
+    close_align_factor: float = DEFAULT_CLOSE_ALIGN_FACTOR
+    carry_zone_timeout_s: float = DEFAULT_CARRY_ZONE_TIMEOUT_S
+    gate_avoid_distance_m: float = DEFAULT_GATE_AVOID_DISTANCE_M
 
     @classmethod
     def from_dict(cls, values: dict | None) -> "AutoConfig":
