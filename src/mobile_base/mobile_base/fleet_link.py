@@ -260,7 +260,7 @@ class FleetLinkNode(Node):
         """
         Log (throttled) that a zone service is not up.
         """
-        self.get_logger().warn(
+        self.get_logger().warning(
             f"{service} service not available",
             throttle_duration_sec=SERVICE_WARN_THROTTLE_S,
         )
@@ -300,7 +300,7 @@ class FleetLinkNode(Node):
         """
         Log (throttled) that a zone service call raised.
         """
-        self.get_logger().warn(
+        self.get_logger().warning(
             f"{service} call failed: {exc}",
             throttle_duration_sec=SERVICE_WARN_THROTTLE_S,
         )
