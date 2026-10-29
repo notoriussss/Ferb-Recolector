@@ -56,7 +56,7 @@ class Camera:
 
     def latest_zone(self, now: float, timeout_s: float):
         """
-        The delivery line seen less than `timeout_s` ago, or None.
+        The delivery gate seen less than `timeout_s` ago, or None.
         """
         pipeline = self._pipeline
         return (
