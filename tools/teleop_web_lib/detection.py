@@ -1,6 +1,7 @@
 """
-Cube and delivery-line detection for the browser tool, on top of the vision
-package's pure logic (the same code the ROS cube_detector node uses).
+Cube and delivery-area detection for the browser tool, on top of the vision
+package's pure logic (the same code the ROS cube_detector node uses,
+including vision/zone.py for the area).
 
 Needs OpenCV, NumPy and PyYAML. `camera.py` imports this module lazily, so
 the robot still drives when they are missing.
@@ -23,44 +24,22 @@ from teleop_web_lib.config import (
 
 log = logging.getLogger("teleop_web")
 
-
-# --- Delivery gate defaults (real values: tools/teleop_web.yaml, camera) -----
-GATE_LANDMARK_COUNT = 2
-DEFAULT_GATE_MIN_AREA_PX = 200
-# Landmarks are upright pieces: height must be at least this times the width.
-DEFAULT_GATE_MIN_HEIGHT_RATIO = 1.2
-# Cubes up to this many px below the landmarks' bases count as on the paper.
-DEFAULT_GATE_IGNORE_MARGIN_PX = 80
-PAPER_HALF_SPAN_HEIGHTS = 1.8
+# Section of hsv_ranges.yaml with the delivery area parameters.
+ZONE_SECTION = "zone"
 
 
 class DetectionPipeline:
     """
-    Finds the best cube and the delivery gate in each frame, remembers the
+    Finds the best cube and the delivery area in each frame, remembers the
     latest of each, and returns the annotated frame for the video stream.
-
-    The gate is the gap between two landmarks: the left one (e.g. green)
-    and the right one (e.g. red) flanking the delivery paper.
     """
 
-    def __init__(
-        self,
-        detector,
-        gate_detector,
-        gate_colors: tuple[str, str],
-        gate_min_area_px: int,
-        gate_min_height_ratio: float,
-        gate_ignore_margin_px: int,
-    ):
+    def __init__(self, detector, zone_locator):
         """
-        Keep the detectors and the delivery-gate parameters.
+        Keep the cube detector and the area locator (vision/zone.py).
         """
         self._detector = detector
-        self._gate_detector = gate_detector  # None = no gate colours
-        self._gate_colors = gate_colors
-        self._gate_min_area_px = gate_min_area_px
-        self._gate_min_height_ratio = gate_min_height_ratio
-        self._gate_ignore_margin_px = gate_ignore_margin_px
+        self._zone_locator = zone_locator
         self._lock = threading.Lock()
         self._det = None
         self._det_stamp_s = 0.0
@@ -78,7 +57,7 @@ class DetectionPipeline:
 
     def latest_zone(self, now: float, timeout_s: float):
         """
-        The delivery gate seen less than `timeout_s` ago, or None.
+        The delivery area seen less than `timeout_s` ago, or None.
         """
         with self._lock:
             if (
@@ -94,53 +73,21 @@ class DetectionPipeline:
         frame.
         """
         from vision.drawing import draw_detections, draw_region
+        from vision.zone import without_cubes_in_zone
 
-        detections = self._detector.detect(frame)
-        gate = None
-        if self._gate_detector is not None:
-            gate = self._find_gate(frame)
-            if gate is not None:
-                detections = self._without_cubes_on_paper(detections, gate)
+        zone = self._zone_locator.locate(frame)
+        detections = without_cubes_in_zone(
+            self._detector.detect(frame),
+            zone,
+            self._zone_locator.params.ignore_margin_px,
+        )
         best = detections[0] if detections else None
-        self._remember(best, gate)
+        self._remember(best, zone)
 
         annotated = draw_detections(frame, detections, best)
-        if gate is not None:
-            draw_region(annotated, gate)
+        if zone is not None:
+            draw_region(annotated, zone)
         return annotated
-
-    def _find_gate(self, frame: np.ndarray):
-        """
-        The delivery area located from the left and/or right landmarks.
-        """
-        left_color, right_color = self._gate_colors
-        left = self._gate_detector.find_marker(
-            frame,
-            left_color,
-            self._gate_min_area_px,
-            self._gate_min_height_ratio,
-        )
-        right = self._gate_detector.find_marker(
-            frame,
-            right_color,
-            self._gate_min_area_px,
-            self._gate_min_height_ratio,
-        )
-        return self._gate_detector.gate_between(left, right)
-
-    def _without_cubes_on_paper(self, detections: list, gate) -> list:
-        """
-        Drop cubes already on the graph paper (around the gate aim column and
-        not nearer than the front edge of the paper).
-        """
-        _, y, _, h = gate.bbox
-        half_span_px = PAPER_HALF_SPAN_HEIGHTS * h
-        limit_v = y + h + self._gate_ignore_margin_px
-        return [
-            d
-            for d in detections
-            if not (abs(d.u - gate.u) <= half_span_px and d.v <= limit_v)
-        ]
 
     def _remember(self, best, zone) -> None:
         """
@@ -189,9 +136,10 @@ def _build_pipeline(
     from vision.camera_model import CameraModel
     from vision.color_detection import ColorDetector, DetectionFilter
     from vision.hsv import parse_hsv_ranges
+    from vision.zone import ZoneLocator, ZoneParams
 
     hsv_cfg = read_node_params(HSV_CONFIG_PATH, HSV_NODE_NAME)
-    hsv = hsv_cfg["hsv"]
+    ranges = {c: parse_hsv_ranges(v) for c, v in hsv_cfg["hsv"].items()}
 
     camera_model = CameraModel(
         width_px=camera_cfg["width_px"],
@@ -205,32 +153,12 @@ def _build_pipeline(
         **{**DEFAULT_DETECTION_FILTER, **detection_overrides},
     )
     detector = ColorDetector(
-        {c: parse_hsv_ranges(hsv[c]) for c in colors if c in hsv},
+        {c: ranges[c] for c in colors if c in ranges},
         camera_model,
         filters,
     )
-    gate_colors = camera_cfg.get("gate_colors") or []
-    gate_detector = None
-    if len(gate_colors) == GATE_LANDMARK_COUNT:
-        gate_detector = ColorDetector(
-            {c: parse_hsv_ranges(hsv[c]) for c in gate_colors},
-            camera_model,
-        )
+    zone_params = ZoneParams(**hsv_cfg.get(ZONE_SECTION, {}))
     return DetectionPipeline(
         detector,
-        gate_detector,
-        tuple(gate_colors) if gate_detector else ("", ""),
-        gate_min_area_px=int(
-            camera_cfg.get("gate_min_area_px", DEFAULT_GATE_MIN_AREA_PX)
-        ),
-        gate_min_height_ratio=float(
-            camera_cfg.get(
-                "gate_min_height_ratio", DEFAULT_GATE_MIN_HEIGHT_RATIO
-            )
-        ),
-        gate_ignore_margin_px=int(
-            camera_cfg.get(
-                "gate_ignore_margin_px", DEFAULT_GATE_IGNORE_MARGIN_PX
-            )
-        ),
+        ZoneLocator(ranges, camera_model, zone_params),
     )
