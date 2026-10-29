@@ -39,9 +39,8 @@ DEFAULT_MIN_ELONGATION = 3.0
 # Narrowest blob width considered when measuring elongation (avoids dividing
 # by a near-zero width).
 MIN_BLOB_WIDTH_PX = 1.0
-# A blob whose lowest row is within this many px of the image bottom
-# touches it.
-BOTTOM_EDGE_MARGIN_PX = 1
+# A blob within this many px of an image edge touches it.
+EDGE_MARGIN_PX = 1
 # Rows (counted up from the lowest one) averaged to find the aim column of
 # a line blob.
 REGION_NEAR_ROWS_PX = 3
@@ -53,6 +52,9 @@ GATE_AIM_FRACTION = 0.38
 # the paper.
 LEFT_LANDMARK_AIM_HEIGHTS = 2.4
 RIGHT_LANDMARK_AIM_HEIGHTS = 3.2
+# Names of the two kinds of delivery-area estimate (`Region.color`).
+REGION_GATE = "gate"
+REGION_FLOOR = "floor"
 
 # Binary mask values.
 MASK_ON = 255
@@ -73,6 +75,9 @@ class DetectionFilter:
     max_size_ratio: float = DEFAULT_MAX_SIZE_RATIO
     # Discard blobs touching the bottom edge (the scoop shows there).
     ignore_touching_bottom: bool = True
+    # Discard blobs cut by the left, right or top edge: their real size is
+    # unknown, so a corner of the delivery area could pass for a cube.
+    ignore_touching_sides: bool = True
     max_distance_m: float = DEFAULT_MAX_DISTANCE_M
 
 
@@ -149,14 +154,14 @@ class ColorDetector:
         Find cubes of every colour, sorted from nearest to farthest.
         """
         hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
-        image_height_px = bgr.shape[0]
+        image_size_px = bgr.shape[:2]
         found: list[Detection] = []
         for color in self.ranges:
             for contour in self._contours_for(hsv, color):
                 detection = self._detection_from_contour(
                     color,
                     contour,
-                    image_height_px,
+                    image_size_px,
                 )
                 if detection is not None:
                     found.append(detection)
@@ -269,7 +274,39 @@ class ColorDetector:
             return None
         bearing_rad = math.atan2((cam.width_px / 2.0 - u), cam.focal_px)
         distance_m = cam.focal_px * LANDMARK_HEIGHT_M / max(1.0, h)
-        return Region("gate", u, v, area, bbox, bearing_rad, distance_m)
+        return Region(REGION_GATE, u, v, area, bbox, bearing_rad, distance_m)
+
+    def find_floor_area(
+        self,
+        bgr: np.ndarray,
+        min_area_px: int,
+        min_flatness: float,
+    ) -> Region | None:
+        """
+        The delivery area on the floor: the largest blob of the union of
+        every colour (e.g. blue + green paper side by side), or None.
+
+        It must be at least `min_area_px` and `min_flatness` times wider
+        than tall: paper lying on the floor looks squashed from the low
+        camera, unlike a cube or an upright landmark.
+        """
+        hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+        union = np.zeros(hsv.shape[:2], dtype=np.uint8)
+        for color in self.ranges:
+            union |= self.mask(hsv, color)
+        contours, _ = cv2.findContours(
+            union,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE,
+        )
+        if not contours:
+            return None
+        contour = max(contours, key=cv2.contourArea)
+        area = cv2.contourArea(contour)
+        _, _, w, h = cv2.boundingRect(contour)
+        if area < min_area_px or w < min_flatness * h:
+            return None
+        return self._region_from_contour(REGION_FLOOR, area, contour)
 
     def _contours_for(self, hsv: np.ndarray, color: str) -> list:
         """
@@ -286,10 +323,12 @@ class ColorDetector:
         self,
         color: str,
         contour: np.ndarray,
-        image_height_px: int,
+        image_size_px: tuple[int, int],
     ) -> Detection | None:
         """
         A located `Detection` if the blob passes every filter, else None.
+
+        `image_size_px` is (height, width).
         """
         area = cv2.contourArea(contour)
         if area < self.filters.min_area_px:
@@ -305,11 +344,30 @@ class ColorDetector:
         hull_area = cv2.contourArea(cv2.convexHull(contour))
         if hull_area <= 0 or area / hull_area < MIN_CUBE_SOLIDITY:
             return None
-        touches_bottom = y + h >= image_height_px - BOTTOM_EDGE_MARGIN_PX
-        if self.filters.ignore_touching_bottom and touches_bottom:
+        if self._is_cut_by_edge((x, y, w, h), image_size_px):
             return None
         detection = Detection(color, x + w // 2, y + h - 1, w, h, (x, y, w, h))
         return detection if self._locate(detection) else None
+
+    def _is_cut_by_edge(
+        self,
+        bbox: tuple[int, int, int, int],
+        image_size_px: tuple[int, int],
+    ) -> bool:
+        """
+        True when the blob touches an image edge the filters reject.
+        """
+        x, y, w, h = bbox
+        height_px, width_px = image_size_px
+        touches_bottom = y + h >= height_px - EDGE_MARGIN_PX
+        touches_sides = (
+            x <= EDGE_MARGIN_PX
+            or y <= EDGE_MARGIN_PX
+            or x + w >= width_px - EDGE_MARGIN_PX
+        )
+        return (self.filters.ignore_touching_bottom and touches_bottom) or (
+            self.filters.ignore_touching_sides and touches_sides
+        )
 
     def _region_from_contour(
         self,
