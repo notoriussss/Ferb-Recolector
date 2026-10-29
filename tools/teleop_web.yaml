@@ -45,7 +45,25 @@ camera:
   target_colors: [yellow]
   # The delivery area (blue + green paper between the green and red landmarks)
   # is located with the `zone` section of src/vision/config/hsv_ranges.yaml,
-  # shared with the ROS cube_detector.
+  # shared with the ROS cube_detector. Overrides for this tool go here.
+  zone:
+    # No area paper: the claw robot's blue/green parts and the graph paper over
+    # the real paper were taken for it (distances of 187 cm and more). Only the
+    # two landmarks locate the delivery gate.
+    floor_colors: []
+  # Skip cubes with the black border line just behind or under them: the scoop
+  # only pushes forward, so catching one shoves it over the line for good.
+  # OFF until the thresholds are tuned on real frames (see border.py).
+  border:
+    enabled: false
+    # A pixel is black tape when its brightest channel is at most this (0-255).
+    max_value: 70
+    # Strip searched behind the cube, in cube heights, and the extra width on
+    # each side, in cube widths.
+    rows_behind_ratio: 1.5
+    side_ratio: 1.0
+    # Share of dark pixels in that area that marks the cube as at the border.
+    min_dark_fraction: 0.12
 
 line_sensor:
   # GPIO (BCM) of the bottom TCRT5000's DO output. null = no sensor (black line not seen).
@@ -68,7 +86,7 @@ auto:
   align_tolerance_rad: 0.22
   lost_timeout_s: 0.6
   # Longest time searching without seeing any cube before stopping for good.
-  no_cubes_stop_s: 7.0
+  no_cubes_stop_s: 20.0
   # Time (s) driving straight blind at ~18.5 cm to push the cube into the scoop.
   scoop_push_s: 0.65
   # Black line: stop, move opposite to the approach direction, then turn inward.
@@ -103,6 +121,31 @@ auto:
   min_speed_fraction: 0.35
   # Smallest slow-down span (m), avoids dividing by a near-zero distance.
   min_slow_span_m: 0.05
+  # A cube seen and then lost from view may be under the scoop (blind spot):
+  # back up this long to uncover it. 0 turns it off. Measured: 0.6 s at
+  # line_speed backs up ~13 cm; a cube at 10 cm from the scoop was invisible
+  # and showed up whole afterwards (it is lost from view below ~12 cm).
+  reveal_backup_s: 0.6
+  # Back up to uncover a lost cube only if it was last seen this close (m): a
+  # far cube that flickers out of view is not hidden under the scoop.
+  reveal_max_distance_m: 0.35
+  # After losing sight of a cube, keep heading where it was last seen for this
+  # long before going back to roaming. TODO measure
+  reacquire_s: 1.5
+  # A line hit while going for a cube or carrying one means the cube is at the
+  # border: ignore cubes for this long so the robot goes elsewhere. TODO measure
+  line_cube_ban_s: 8.0
+  # Closer than this to its target, the alignment tolerance is widened by the
+  # factor below (a few cm sideways is already a big angle up close). Keep the
+  # factor under catch_align_factor. TODO measure
+  close_align_distance_m: 0.30
+  close_align_factor: 1.3
+  # Carrying a cube without ever seeing the delivery gate for this long: assume
+  # the cube slipped out of the scoop. TODO measure
+  carry_zone_timeout_s: 15.0
+  # Without a cube in view, never roam forward while the delivery gate is
+  # this close or closer (past it there is no border line). TODO measure
+  gate_avoid_distance_m: 0.6
 
 # Strict 3x3 cm cube filter: rejects large/flat/irregular objects.
 detection:
