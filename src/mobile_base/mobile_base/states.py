@@ -14,8 +14,9 @@ class State(StrEnum):
     Local behaviour states.
 
     SEARCH, APPROACH and ARRIVED are driven by `ApproachController`.
+    CATCH, CARRY, WAIT_ZONE, DELIVER, RELEASE and LINE_ESCAPE by
+    `CollectorFsm` (collector.py).
     MANUAL and NO_CAMERA are overlays decided by the `behavior_fsm` node.
-    CATCH, CARRY and RELEASE are reserved for the scoop work (role 3).
     """
 
     PAUSED = "PAUSED"
@@ -24,7 +25,10 @@ class State(StrEnum):
     ARRIVED = "ARRIVED"
     CATCH = "CATCH"
     CARRY = "CARRY"
+    WAIT_ZONE = "WAIT_ZONE"
+    DELIVER = "DELIVER"
     RELEASE = "RELEASE"
+    LINE_ESCAPE = "LINE_ESCAPE"
     MANUAL = "MANUAL"
     NO_CAMERA = "NO_CAMERA"
 
