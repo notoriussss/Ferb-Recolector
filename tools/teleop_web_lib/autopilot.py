@@ -2,9 +2,10 @@
 Auto mode state machine for the browser tool. Pure logic: no hardware, no
 threads. Time is passed in as a float in seconds.
 
-Auto mode: find a target-colour cube, push it into the scoop, carry it to the
-green/blue delivery line, leave it there and count it. The bottom line sensor
-stops the robot at the black border (it backs up and turns inward).
+Auto mode: find a target-colour cube, push it into the scoop, carry it to
+the delivery gate (the paper between the green and red landmarks), leave it
+there and count it. The bottom line sensor stops the robot at the black
+border (it backs up and turns inward).
 
 Axes: on the physical robot, `DriveCommand` maps to:
 - `vy > 0` = forward (W), `vy < 0` = backward/reverse (S)
@@ -84,7 +85,7 @@ class Vision(Protocol):
 
     def latest_zone(self, now: float, timeout_s: float):
         """
-        The delivery line seen less than `timeout_s` ago, or None.
+        The delivery gate seen less than `timeout_s` ago, or None.
         """
 
 
@@ -140,7 +141,7 @@ class AutoPilot:
         self.state = STATE_PAUSED
         self.target_info: str | None = None
         self.collected_count = 0  # cubes pushed into the scoop
-        self.delivered_count = 0  # cubes left at the green/blue line
+        self.delivered_count = 0  # cubes left on the delivery paper
         self.carrying = False
         self._phase_until = 0.0
         self._line_turn_until = 0.0
@@ -410,10 +411,11 @@ class AutoPilot:
             return STOP
         return self._roam(now, STATE_EXPLORE)
 
-    # ---------- carrying to the delivery line ----------
+    # ---------- carrying to the delivery gate ----------
     def _carry_step(self, now: float) -> DriveCommand:
         """
-        With a cube in the scoop: find the green/blue line and drive to it.
+        With a cube in the scoop: find the gate between the landmarks and drive
+        through it.
         """
         cfg = self.cfg
         zone = None
