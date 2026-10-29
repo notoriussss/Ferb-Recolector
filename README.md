@@ -1,6 +1,6 @@
 # recolector-ucab
 
-Collector robot for UCAB Robotics. It is a mecanum robot that picks up wooden cubes inside the area marked by the track's black line and pushes them, one at a time with its scoop, to the black delivery square. It keeps count of the cubes it delivers.
+Collector robot for UCAB Robotics. It is a mecanum robot that picks up wooden cubes inside the area marked by the track's black line and pushes them, one at a time with its scoop, to the delivery area (blue and green paper in a gap of the line). It keeps count of the cubes it delivers.
 
 Other robots also work on the track (another collector and the claw that sorts the cubes from the square). **They are separate projects, by other teams.** This repository is only our robot; anything that must be agreed with them is recorded in [`docs/external-interface.md`](docs/external-interface.md).
 
