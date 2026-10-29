@@ -12,7 +12,7 @@
 
 ## 0. Summary
 
-- There are three robots. Two collectors pick up the cubes inside the area bounded by the black line and **push or carry them to the black square** on the track. There is no delivery box. The claw robot takes the cubes from the square and sorts them by colour.
+- There are three robots. Two collectors pick up the cubes inside the area bounded by the black line and **push or carry them to the delivery area** on the track. There is no delivery box. The claw robot takes the cubes from the square and sorts them by colour.
 - Both collectors carry **the same scoop** and move one cube at a time.
 - **Each collector only picks up its reserved colours.** Proposal: Phineas picks up the warm ones (red, orange, yellow) and Ferb the cool ones (green, blue, purple). The claw keeps sorting from the square.
 - Both collectors share the same area, so the plan includes rules so they neither crash into nor sabotage each other.
@@ -31,7 +31,7 @@
 ### Track
 - White board of about 2.4 × 1.2 m (estimated), with a closed outline of black tape about 2–3 cm wide.
 - The work area is the inside of the outline. It has a zigzag on the left, a U-shaped bay at the top and curves at the bottom.
-- **Black square** attached to the line on the right side, about 25–30 cm (estimated). It is the **delivery zone**: the collectors leave the cubes inside and the claw robot takes them from there.
+- **Delivery area** in a gap of the line: blue and green paper, about 24 cm (to measure), with no black tape across it. Two upright traffic-light landmarks flank it, green on the left and red on the right (seen from the arena). The collectors leave the cubes inside and the claw robot takes them from there.
 - **Cubes:** about 14, wooden, about 2.5 cm (estimated). They come in 6 colours: red, orange, yellow, green, blue and purple or maroon. They are spread over the left half and the centre.
 - Inside the area there is a **paper sign** that says "No colocar nada…" ("Do not place anything…"). Its black letters could confuse the line sensors if it is still there on test day.
 
@@ -50,7 +50,7 @@
 
 ## 2. Colour split and delivery to the square
 
-The two collectors are identical: same chassis, same electronics and **the same scoop**. The only difference is which cubes each one looks for. Each robot has **reserved colours** and only pushes those into the black square. The claw robot keeps sorting from the square.
+The two collectors are identical: same chassis, same electronics and **the same scoop**. The only difference is which cubes each one looks for. Each robot has **reserved colours** and only pushes those into the delivery area. The claw robot keeps sorting from the square.
 
 ### Proposed split: warm and cool
 
@@ -75,8 +75,8 @@ The two collectors are identical: same chassis, same electronics and **the same 
 ### Confirming the colour before delivering
 From a distance, the camera can be fooled by the lighting. So, when the cube enters the scoop, a TCS34725 colour sensor (≈3 USD) looks at it up close with its own light. If the colour is not its own, the robot raises the scoop, backs up, leaves the cube where it was and marks it as "the other's".
 
-### The square touches the black line
-To deliver, the robot has to get close to the square or enter it slightly. So the "do not cross the line" rule is relaxed only when the robot is facing the square. It recognizes this by an ArUco marker placed next to it, if the rules allow it.
+### The delivery area is a gap in the line
+The black line is the border everywhere, with no exception. The delivery area has no tape across it, so the robot drives onto it without breaking the rule. If the line sensor sees black while delivering, the robot hit the end of the line beside the gap: it backs up and tries again. It aims with the two landmarks from afar and with the area colours (blue and green on the floor) up close. The line sensor must read the blue and green paper as white (TCRT5000 trimpot).
 
 ### Counting
 The counter goes up when the cube is **inside the square**, not when it is captured. Each robot counts per colour and the claw adds up the total.
@@ -116,7 +116,7 @@ stateDiagram-v2
 ```
 
 Two rules override everything else, in any state:
-1. If a line sensor sees black, the robot stops, backs up and turns inwards. The exception is when it is facing the square.
+1. If a line sensor sees black, the robot stops, backs up and turns inwards. No exception: the delivery area is a gap with no tape.
 2. If the ultrasonic sensor detects something close, the robot applies the distance rules from section 4.
 
 ---
@@ -235,7 +235,7 @@ Prices are approximate, in USD, from AliExpress or local shops. If someone on th
 
 ## 8. Suggested work order
 
-1. Measure the track, the black square, the cubes and the chassis front bracket. Confirm the rules: time, Wi‑Fi use and whether markers are allowed.
+1. Measure the track, the delivery area, the cubes and the chassis front bracket. Confirm the rules: time, Wi‑Fi use and whether markers are allowed.
 2. Agree with the other two teams on the colour split, the message table and the crossing rules.
 3. Test the network: the three Pis connected to the phone hotspot and seeing each other over ROS 2.
 4. Sort out power: 2S battery, regulator for the Pi and a motor test with the HAT on the Pi 5.
