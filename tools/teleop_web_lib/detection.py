@@ -14,6 +14,7 @@ import time
 
 import numpy as np
 
+from teleop_web_lib.border import BorderParams, without_cubes_near_border
 from teleop_web_lib.config import (
     DEFAULT_DETECTION_FILTER,
     HSV_CONFIG_PATH,
@@ -26,6 +27,8 @@ log = logging.getLogger("teleop_web")
 
 # Section of hsv_ranges.yaml with the delivery area parameters.
 ZONE_SECTION = "zone"
+# Key of the camera section with the border filter settings.
+BORDER_SECTION = "border"
 
 
 class DetectionPipeline:
@@ -34,12 +37,19 @@ class DetectionPipeline:
     latest of each, and returns the annotated frame for the video stream.
     """
 
-    def __init__(self, detector, zone_locator):
+    def __init__(
+        self,
+        detector,
+        zone_locator,
+        border: BorderParams | None = None,
+    ):
         """
-        Keep the cube detector and the area locator (vision/zone.py).
+        Keep the cube detector, the area locator (vision/zone.py) and the
+        border filter settings (off when not given).
         """
         self._detector = detector
         self._zone_locator = zone_locator
+        self._border = border or BorderParams()
         self._lock = threading.Lock()
         self._det = None
         self._det_stamp_s = 0.0
@@ -81,6 +91,7 @@ class DetectionPipeline:
             zone,
             self._zone_locator.params.ignore_margin_px,
         )
+        detections = without_cubes_near_border(frame, detections, self._border)
         best = detections[0] if detections else None
         self._remember(best, zone)
 
@@ -157,8 +168,13 @@ def _build_pipeline(
         camera_model,
         filters,
     )
-    zone_params = ZoneParams(**hsv_cfg.get(ZONE_SECTION, {}))
+    # The camera section may override the shared zone settings (e.g. turn the
+    # area paper off: `zone: {floor_colors: []}`).
+    zone_params = ZoneParams(
+        **{**hsv_cfg.get(ZONE_SECTION, {}), **camera_cfg.get(ZONE_SECTION, {})}
+    )
     return DetectionPipeline(
         detector,
         ZoneLocator(ranges, camera_model, zone_params),
+        BorderParams(**camera_cfg.get(BORDER_SECTION, {})),
     )
