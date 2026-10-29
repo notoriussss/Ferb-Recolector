@@ -55,7 +55,7 @@ DEFAULT_MIN_SLOW_SPAN_M = 0.05
 DEFAULT_DETECTION_FILTER = {
     "min_area_px": 80,
     "min_size_ratio": 0.50,
-    "max_size_ratio": 1.65,
+    "max_size_ratio": 2.10,
     "ignore_touching_bottom": False,
     "max_distance_m": 1.6,
 }
