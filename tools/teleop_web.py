@@ -3,9 +3,10 @@
 Browser control for the collector: WASD driving, camera video and an Auto
 mode.
 
-Auto mode: find a target-colour cube, push it into the scoop, carry it to the
-green/blue delivery line, leave it there and count it. The bottom line sensor
-stops the robot at the black border (it backs up and turns inward).
+Auto mode: find a target-colour cube, push it into the scoop, carry it to
+the delivery gate (the paper between the green and red landmarks), leave it
+there and count it. The bottom line sensor stops the robot at the black
+border (it backs up and turns inward).
 
 Interim tool without ROS: it talks straight to the HAT, so it does NOT go
 through obstacle_guard. Use it with the wheels off the ground or a hand near
