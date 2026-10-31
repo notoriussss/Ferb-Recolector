@@ -41,6 +41,15 @@ DEFAULT_FLOOR_MIN_FLATNESS = 1.5
 # Cubes up to this many px nearer than the landmarks' bases count as in the
 # area when only the gate is known.
 DEFAULT_IGNORE_MARGIN_PX = 80
+# Largest area paper blob accepted (0 = no limit): under some white balances
+# the whole pale table reads as paper and fills the lower image.
+DEFAULT_FLOOR_MAX_AREA_PX = 0
+# Drop an area blob that reaches the bottom of the image: the real paper has
+# the floor in front of it, a blob of the table itself does not.
+DEFAULT_FLOOR_IGNORE_TOUCHING_BOTTOM = False
+# A blob whose lowest row is within this many px of the image bottom
+# touches it.
+FLOOR_BOTTOM_MARGIN_PX = 3
 
 # Half width of the area around the gate aim column, in landmark heights.
 PAPER_HALF_SPAN_HEIGHTS = 1.8
@@ -66,6 +75,25 @@ class ZoneParams:
     floor_min_area_px: int = DEFAULT_FLOOR_MIN_AREA_PX
     floor_min_flatness: float = DEFAULT_FLOOR_MIN_FLATNESS
     ignore_margin_px: int = DEFAULT_IGNORE_MARGIN_PX
+    floor_max_area_px: int = DEFAULT_FLOOR_MAX_AREA_PX
+    floor_ignore_touching_bottom: bool = DEFAULT_FLOOR_IGNORE_TOUCHING_BOTTOM
+
+
+def is_plausible_floor(
+    floor: Region | None,
+    frame_height_px: int,
+    params: ZoneParams,
+) -> bool:
+    """
+    True when `floor` can be the area paper: it exists, is not larger than
+    `floor_max_area_px` and, if asked, does not reach the image bottom.
+    """
+    if floor is None:
+        return False
+    if params.floor_max_area_px and floor.area_px > params.floor_max_area_px:
+        return False
+    touches_bottom = floor.v >= frame_height_px - FLOOR_BOTTOM_MARGIN_PX
+    return not (params.floor_ignore_touching_bottom and touches_bottom)
 
 
 def choose_zone(gate: Region | None, floor: Region | None) -> Region | None:
@@ -162,8 +190,11 @@ class ZoneLocator:
         """
         if self._floor is None:
             return None
-        return self._floor.find_floor_area(
+        floor = self._floor.find_floor_area(
             bgr,
             self.params.floor_min_area_px,
             self.params.floor_min_flatness,
         )
+        if is_plausible_floor(floor, bgr.shape[0], self.params):
+            return floor
+        return None
