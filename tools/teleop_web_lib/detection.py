@@ -29,6 +29,8 @@ log = logging.getLogger("teleop_web")
 ZONE_SECTION = "zone"
 # Key of the camera section with the border filter settings.
 BORDER_SECTION = "border"
+# Key of the camera section with extra HSV ranges for the area paper.
+AREA_HSV_KEY = "area_hsv"
 
 
 class DetectionPipeline:
@@ -150,7 +152,10 @@ def _build_pipeline(
     from vision.zone import ZoneLocator, ZoneParams
 
     hsv_cfg = read_node_params(HSV_CONFIG_PATH, HSV_NODE_NAME)
-    ranges = {c: parse_hsv_ranges(v) for c, v in hsv_cfg["hsv"].items()}
+    # Colours of this tool only (the delivery area paper), added to the
+    # shared ones without touching the file the ROS nodes read.
+    hsv_values = {**hsv_cfg["hsv"], **camera_cfg.get(AREA_HSV_KEY, {})}
+    ranges = {c: parse_hsv_ranges(v) for c, v in hsv_values.items()}
 
     camera_model = CameraModel(
         width_px=camera_cfg["width_px"],
