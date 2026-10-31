@@ -46,11 +46,29 @@ camera:
   # The delivery area (blue + green paper between the green and red landmarks)
   # is located with the `zone` section of src/vision/config/hsv_ranges.yaml,
   # shared with the ROS cube_detector. Overrides for this tool go here.
+  # HSV ranges [h_min, s_min, v_min, h_max, s_max, v_max] of the temporary
+  # delivery area, measured on this camera's frames (10.2026). It renders the
+  # floor yellowish (H ~32), so the pale blue paper reads green-cyan (H ~80,
+  # S ~45, V ~175) and the pink line orange (H ~11-16, S ~50, V ~190). The
+  # old blue/green ranges (S >= 80) never matched them. TODO recheck if the
+  # lighting or the white balance changes.
+  area_hsv:
+    area_blue: [68, 25, 120, 95, 110, 235]
+    area_pink: [3, 30, 140, 22, 100, 235]
   zone:
-    # No area paper: the claw robot's blue/green parts and the graph paper over
-    # the real paper were taken for it (distances of 187 cm and more). Only the
-    # two landmarks locate the delivery gate.
-    floor_colors: []
+    # The area is the blue sheet plus the pink line where it starts (the
+    # robot enters across the pink one). The claw robot's blue/green parts
+    # were taken for the old blue/green paper (distances of 187 cm and more),
+    # so those colours stay out; these two ranges exclude it (it is dark).
+    floor_colors: [area_blue, area_pink]
+    # Larger than the old default: a small blob (1600 px) matched the claw's
+    # surroundings; the real area is ~14700 px at 50 cm and ~3700 at 1 m.
+    floor_min_area_px: 3000
+    # Under some white balances (facing a dark wall) the pale table or the
+    # sign paper read as blue: a real blob has floor in front of it and is not
+    # bigger than ~30% of the image.
+    floor_max_area_px: 90000
+    floor_ignore_touching_bottom: true
   # Skip cubes with the black border line just behind or under them: the scoop
   # only pushes forward, so catching one shoves it over the line for good.
   # OFF until the thresholds are tuned on real frames (see border.py).
@@ -135,6 +153,14 @@ auto:
   # A line hit while going for a cube or carrying one means the cube is at the
   # border: ignore cubes for this long so the robot goes elsewhere. TODO measure
   line_cube_ban_s: 8.0
+  # Delivery into the area paper (blue sheet ~17 cm deep, entered across the
+  # pink line): the arrival is when its near edge is ~19 cm from the camera and
+  # the cube sits ~12 cm ahead of it, so ~15 cm of push puts the cube inside.
+  # Forward at 0.42 is ~0.26 m/s (backing at 0.35 measured ~13 cm in 0.6 s), so
+  # that is ~0.6 s; back up about as far and a little more. The landmark gate
+  # keeps the longer deliver_* times. TODO measure
+  floor_deliver_push_s: 0.6
+  floor_deliver_backup_s: 1.0
   # Closer than this to its target, the alignment tolerance is widened by the
   # factor below (a few cm sideways is already a big angle up close). Keep the
   # factor under catch_align_factor. TODO measure
