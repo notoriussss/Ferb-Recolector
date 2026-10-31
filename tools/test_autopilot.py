@@ -4,6 +4,8 @@ pytest tools). The autopilot is pure logic, so no thread or hardware is
 involved.
 """
 
+from pathlib import Path
+
 import pytest
 
 from teleop_web_lib.autopilot import AutoPilot, DriveCommand
@@ -11,8 +13,11 @@ from teleop_web_lib.config import (
     HSV_CONFIG_PATH,
     HSV_NODE_NAME,
     AutoConfig,
+    load_config,
     read_node_params,
 )
+
+TOOL_YAML_PATH = Path(__file__).with_name("teleop_web.yaml")
 
 FAST_PHASES = {
     "enabled": True,
@@ -193,6 +198,34 @@ def test_never_roams_forward_toward_a_close_gate_without_a_cube():
     assert command.vy == 0.0 and command.wz == -1.0  # turns right, away
 
 
+def test_the_area_paper_is_never_avoided_only_the_landmark_gate():
+    pilot, vision = make_pilot()
+    pilot.configure(now=0.0, enabled=True, reset=True)  # search clock at 0
+    pilot.step(0.0)  # the first move is the back-up that uncovers cubes
+    near_m = pilot.cfg.gate_avoid_distance_m - 0.1
+    vision.zone = Seen("floor", near_m)
+    pilot.step(pilot.cfg.reveal_backup_s + 0.1)
+    assert pilot.state != "EXPLORE (avoid gate)"
+
+
+def test_delivery_into_the_area_paper_pushes_and_backs_up_less():
+    config = AutoConfig(
+        **{
+            **FAST_PHASES,
+            "floor_deliver_push_s": 0.2,
+            "floor_deliver_backup_s": 0.3,
+        },
+    )
+    pilot = AutoPilot(config, StubVision())
+    pilot.vision.zone = Seen("floor", 0.18)
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    assert pilot.step(0.0).vy == 1.0 and pilot.state == "DROP"
+    assert pilot.step(0.3).vy == -1.0  # already backing up (gate: 0.5 s)
+    assert pilot.delivered_count == 1
+    assert pilot.step(0.6).vy == 0.0 and pilot.state == "DROP (turn)"
+
+
 def test_roams_normally_while_the_gate_is_far():
     pilot, vision = make_pilot()
     pilot.configure(now=0.0, enabled=True, reset=True)  # search clock at 0
@@ -368,6 +401,15 @@ def test_the_real_vision_config_has_what_the_tool_needs():
     params = read_node_params(HSV_CONFIG_PATH, HSV_NODE_NAME)
     assert {"hsv", "camera", "filter"} <= set(params)
     assert {"hfov_rad", "height_m", "tilt_rad"} <= set(params["camera"])
+
+
+def test_every_area_colour_the_tool_looks_for_has_a_range():
+    camera = load_config(TOOL_YAML_PATH)["camera"]
+    shared = read_node_params(HSV_CONFIG_PATH, HSV_NODE_NAME)["hsv"]
+    known = set(shared) | set(camera.get("area_hsv", {}))
+    assert set(camera["zone"]["floor_colors"]) <= known
+    for ranges in camera["area_hsv"].values():
+        assert len(ranges) % 6 == 0  # [h, s, v] min and max per range
 
 
 def test_area_paper_arrives_closer_than_the_landmarks():
