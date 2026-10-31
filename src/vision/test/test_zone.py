@@ -13,6 +13,7 @@ from vision.zone import (
     ZoneLocator,
     ZoneParams,
     choose_zone,
+    is_plausible_floor,
     without_cubes_in_zone,
 )
 
@@ -86,3 +87,24 @@ def test_cubes_inside_the_floor_area_are_dropped():
     kept = without_cubes_in_zone([inside, outside], floor, margin_px=80)
     assert kept == [outside]
     assert without_cubes_in_zone([inside], None, margin_px=80) == [inside]
+
+
+def floor_blob(area_px, v):
+    return Region("floor", 320, v, area_px, (0, 0, 640, 40), 0.0, 0.5)
+
+
+def test_an_area_blob_larger_than_the_limit_is_not_the_paper():
+    params = ZoneParams(floor_max_area_px=50000)
+    assert is_plausible_floor(floor_blob(14000, 250), 480, params)
+    assert not is_plausible_floor(floor_blob(90000, 250), 480, params)
+
+
+def test_an_area_blob_reaching_the_bottom_is_not_the_paper_when_asked():
+    asked = ZoneParams(floor_ignore_touching_bottom=True)
+    assert is_plausible_floor(floor_blob(14000, 445), 480, asked)
+    assert not is_plausible_floor(floor_blob(14000, 479), 480, asked)
+    assert is_plausible_floor(floor_blob(14000, 479), 480, ZoneParams())
+
+
+def test_there_is_no_paper_without_a_blob():
+    assert not is_plausible_floor(None, 480, ZoneParams())
