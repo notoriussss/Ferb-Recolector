@@ -72,6 +72,14 @@ DEFAULT_LINE_CUBE_BAN_S = 8.0
 # ever being allowed to catch. TODO measure
 DEFAULT_CLOSE_ALIGN_DISTANCE_M = 0.30
 DEFAULT_CLOSE_ALIGN_FACTOR = 1.3
+# Delivery into the area paper (blue sheet ~17 cm deep, entered across the
+# pink line): the arrival is when its near edge is ~19 cm from the camera and
+# the cube sits ~12 cm ahead of it, so ~15 cm of push puts the cube inside.
+# Forward at 0.42 is ~0.26 m/s (backing at 0.35 measured ~13 cm in 0.6 s), so
+# that is ~0.6 s; back up about as far and a little more. The landmark gate
+# keeps the longer deliver_* times. TODO measure
+DEFAULT_FLOOR_DELIVER_PUSH_S = 0.6
+DEFAULT_FLOOR_DELIVER_BACKUP_S = 1.0
 # Carrying a cube without ever seeing the delivery gate for this long: assume
 # the cube slipped out of the scoop. TODO measure
 DEFAULT_CARRY_ZONE_TIMEOUT_S = 15.0
@@ -150,6 +158,8 @@ class AutoConfig:
     reveal_max_distance_m: float = DEFAULT_REVEAL_MAX_DISTANCE_M
     reacquire_s: float = DEFAULT_REACQUIRE_S
     line_cube_ban_s: float = DEFAULT_LINE_CUBE_BAN_S
+    floor_deliver_push_s: float = DEFAULT_FLOOR_DELIVER_PUSH_S
+    floor_deliver_backup_s: float = DEFAULT_FLOOR_DELIVER_BACKUP_S
     close_align_distance_m: float = DEFAULT_CLOSE_ALIGN_DISTANCE_M
     close_align_factor: float = DEFAULT_CLOSE_ALIGN_FACTOR
     carry_zone_timeout_s: float = DEFAULT_CARRY_ZONE_TIMEOUT_S
