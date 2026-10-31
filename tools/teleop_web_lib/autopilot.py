@@ -171,6 +171,10 @@ class AutoPilot:
         self._last_bearing_rad = 0.0
         # Cubes are ignored until then: the last one led to the border line.
         self._ignore_cubes_until = 0.0
+        # Push and back-up times of the delivery in progress (they depend on
+        # whether the area paper or the landmark gate led to it).
+        self._drop_push_s = cfg.deliver_push_s
+        self._drop_backup_s = cfg.deliver_backup_s
 
     # ---------- mode control ----------
     def configure(
@@ -400,7 +404,7 @@ class AutoPilot:
         if now < self._phase_until:
             return _forward(cfg.forward_speed)
         self._finish_drop()
-        backup_until = self._phase_until + cfg.deliver_backup_s
+        backup_until = self._phase_until + self._drop_backup_s
         if now < backup_until:
             self.state = STATE_DROP_BACKUP
             return _backward(cfg.line_speed)
@@ -482,7 +486,7 @@ class AutoPilot:
             self.state = STATE_EXPLORE_BACKUP
             return _backward(cfg.line_speed)
         zone = self._zone_in_view(now)
-        if zone is not None and zone.distance_m <= cfg.gate_avoid_distance_m:
+        if self._must_avoid(zone):
             self.state = STATE_EXPLORE_AVOID
             return _turn(-_side_of(zone.bearing_rad), cfg.search_turn_speed)
         return self._reacquire_step(now) or self._roam(now, STATE_EXPLORE)
@@ -501,6 +505,19 @@ class AutoPilot:
         if abs(self._last_bearing_rad) <= cfg.align_tolerance_rad:
             return _forward(cfg.roam_forward_speed)
         return _turn(_side_of(self._last_bearing_rad), cfg.search_turn_speed)
+
+    def _must_avoid(self, zone) -> bool:
+        """
+        True when a landmark gate is this close: past it there is no border
+        line to stop at. The area paper never needs avoiding: black tape
+        closes it at the back, and turning away from it just stalled the
+        robot in the field.
+        """
+        return (
+            zone is not None
+            and zone.color != ZONE_SOURCE_FLOOR
+            and zone.distance_m <= self.cfg.gate_avoid_distance_m
+        )
 
     def _zone_in_view(self, now: float):
         """
@@ -532,8 +549,7 @@ class AutoPilot:
         stop_distance_m, arrive_v_px = self._zone_thresholds(zone)
         at_zone = zone.distance_m <= stop_distance_m or zone.v >= arrive_v_px
         if at_zone and self._is_aligned(zone.bearing_rad):
-            self.state = STATE_DROP
-            self._phase_until = now + cfg.deliver_push_s
+            self._start_drop(now, zone)
             return _forward(cfg.forward_speed)
         return self._steer_to(
             zone.bearing_rad,
@@ -541,6 +557,21 @@ class AutoPilot:
             stop_distance_m,
             STATE_CARRY,
         )
+
+    def _start_drop(self, now: float, zone) -> None:
+        """
+        Begin the delivery push. Into the area paper it is short (the sheet
+        is shallow); toward the landmark gate it is the long one.
+        """
+        cfg = self.cfg
+        if zone.color == ZONE_SOURCE_FLOOR:
+            self._drop_push_s = cfg.floor_deliver_push_s
+            self._drop_backup_s = cfg.floor_deliver_backup_s
+        else:
+            self._drop_push_s = cfg.deliver_push_s
+            self._drop_backup_s = cfg.deliver_backup_s
+        self.state = STATE_DROP
+        self._phase_until = now + self._drop_push_s
 
     def _give_up_carrying(self, now: float) -> DriveCommand:
         """
