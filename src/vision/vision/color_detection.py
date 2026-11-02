@@ -44,8 +44,14 @@ EDGE_MARGIN_PX = 1
 # Rows (counted up from the lowest one) averaged to find the aim column of
 # a line blob.
 REGION_NEAR_ROWS_PX = 3
-# Real height (m) of the coloured section of a traffic-light landmark.
-LANDMARK_HEIGHT_M = 0.095
+# Real height (m) of the coloured section of a landmark, without its base
+# (measured: 6.4 cm; the whole lego is 8.4 cm). The distance by size is
+# focal_px * this / height_px, so it needs the true focal length: in the
+# cropped 640x480 sensor mode the configured hfov was twice the real one and
+# this had to be inflated to 13.25 cm. The tool now requests the full field
+# of view and sets hfov in its own YAML (camera.model), so the real value
+# works.
+LANDMARK_HEIGHT_M = 0.064
 # Where the graph paper sits between the left (green) and right (red) landmarks.
 GATE_AIM_FRACTION = 0.38
 # Horizontal offset (in landmark heights) from a single visible landmark to
@@ -110,6 +116,12 @@ class Region:
     bbox: tuple[int, int, int, int]
     bearing_rad: float
     distance_m: float
+    # Turn (rad, positive = left) that leaves the robot facing the area's
+    # entry line squarely; None when the line is not in view.
+    entry_angle_rad: float | None = None
+    # Distance (m) to the area's far edge, straight across its middle; None
+    # when unknown (above the horizon, or not the area paper).
+    far_distance_m: float | None = None
 
 
 @dataclass(frozen=True)
@@ -235,6 +247,9 @@ class ColorDetector:
         self,
         left: Marker | None,
         right: Marker | None,
+        aim_fraction: float = GATE_AIM_FRACTION,
+        left_aim_heights: float = LEFT_LANDMARK_AIM_HEIGHTS,
+        right_aim_heights: float = RIGHT_LANDMARK_AIM_HEIGHTS,
     ) -> Region | None:
         """
         The delivery area (graph paper) located from the two traffic-light
@@ -246,7 +261,7 @@ class ColorDetector:
         if left is not None and right is not None:
             if left.u >= right.u:
                 return None
-            u = round(left.u + GATE_AIM_FRACTION * (right.u - left.u))
+            u = round(left.u + aim_fraction * (right.u - left.u))
             v = (left.v + right.v) // 2
             h = (left.bbox[3] + right.bbox[3]) / 2.0
             x0 = min(left.bbox[0], right.bbox[0])
@@ -259,14 +274,14 @@ class ColorDetector:
             h = float(left.bbox[3])
             u = min(
                 cam.width_px - 1,
-                round(left.u + LEFT_LANDMARK_AIM_HEIGHTS * h),
+                round(left.u + left_aim_heights * h),
             )
             v = left.v
             bbox = left.bbox
             area = left.area_px
         elif right is not None:
             h = float(right.bbox[3])
-            u = max(0, round(right.u - RIGHT_LANDMARK_AIM_HEIGHTS * h))
+            u = max(0, round(right.u - right_aim_heights * h))
             v = right.v
             bbox = right.bbox
             area = right.area_px

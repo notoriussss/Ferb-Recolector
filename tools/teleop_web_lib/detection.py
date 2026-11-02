@@ -14,6 +14,7 @@ import time
 
 import numpy as np
 
+from teleop_web_lib.border import BorderParams, without_cubes_near_border
 from teleop_web_lib.config import (
     DEFAULT_DETECTION_FILTER,
     HSV_CONFIG_PATH,
@@ -21,11 +22,20 @@ from teleop_web_lib.config import (
     VISION_PACKAGE_DIR,
     read_node_params,
 )
+from teleop_web_lib.support import SupportParams, without_cubes_off_table
 
 log = logging.getLogger("teleop_web")
 
 # Section of hsv_ranges.yaml with the delivery area parameters.
 ZONE_SECTION = "zone"
+# Key of the camera section that overrides the camera geometry.
+MODEL_SECTION = "model"
+# Key of the camera section with the border filter settings.
+BORDER_SECTION = "border"
+# Key of the camera section with the cube-on-the-table filter settings.
+SUPPORT_SECTION = "support"
+# Key of the camera section with extra HSV ranges for the area paper.
+AREA_HSV_KEY = "area_hsv"
 
 
 class DetectionPipeline:
@@ -34,12 +44,21 @@ class DetectionPipeline:
     latest of each, and returns the annotated frame for the video stream.
     """
 
-    def __init__(self, detector, zone_locator):
+    def __init__(
+        self,
+        detector,
+        zone_locator,
+        border: BorderParams | None = None,
+        support: SupportParams | None = None,
+    ):
         """
-        Keep the cube detector and the area locator (vision/zone.py).
+        Keep the cube detector, the area locator (vision/zone.py) and the
+        border filter settings (off when not given).
         """
         self._detector = detector
         self._zone_locator = zone_locator
+        self._border = border or BorderParams()
+        self._support = support or SupportParams()
         self._lock = threading.Lock()
         self._det = None
         self._det_stamp_s = 0.0
@@ -76,11 +95,16 @@ class DetectionPipeline:
         from vision.zone import without_cubes_in_zone
 
         zone = self._zone_locator.locate(frame)
+        zone_params = self._zone_locator.params
         detections = without_cubes_in_zone(
             self._detector.detect(frame),
             zone,
-            self._zone_locator.params.ignore_margin_px,
+            zone_params.ignore_margin_px,
+            zone_params.ignore_floor_margin_m,
+            zone_params.ignore_gate_depth_m,
         )
+        detections = without_cubes_near_border(frame, detections, self._border)
+        detections = without_cubes_off_table(frame, detections, self._support)
         best = detections[0] if detections else None
         self._remember(best, zone)
 
@@ -139,14 +163,20 @@ def _build_pipeline(
     from vision.zone import ZoneLocator, ZoneParams
 
     hsv_cfg = read_node_params(HSV_CONFIG_PATH, HSV_NODE_NAME)
-    ranges = {c: parse_hsv_ranges(v) for c, v in hsv_cfg["hsv"].items()}
+    # Colours of this tool only (the delivery area paper), added to the
+    # shared ones without touching the file the ROS nodes read.
+    hsv_values = {**hsv_cfg["hsv"], **camera_cfg.get(AREA_HSV_KEY, {})}
+    ranges = {c: parse_hsv_ranges(v) for c, v in hsv_values.items()}
 
+    # The tool's camera section overrides the shared geometry (its sensor
+    # mode is not the one the shared values were measured in).
+    geometry = {**hsv_cfg["camera"], **camera_cfg.get(MODEL_SECTION, {})}
     camera_model = CameraModel(
         width_px=camera_cfg["width_px"],
         height_px=camera_cfg["height_px"],
-        hfov_rad=hsv_cfg["camera"]["hfov_rad"],
-        height_m=hsv_cfg["camera"]["height_m"],
-        tilt_rad=hsv_cfg["camera"]["tilt_rad"],
+        hfov_rad=geometry["hfov_rad"],
+        height_m=geometry["height_m"],
+        tilt_rad=geometry["tilt_rad"],
     )
     filters = DetectionFilter(
         cube_size_m=hsv_cfg["filter"]["cube_size_m"],
@@ -157,8 +187,14 @@ def _build_pipeline(
         camera_model,
         filters,
     )
-    zone_params = ZoneParams(**hsv_cfg.get(ZONE_SECTION, {}))
+    # The camera section may override the shared zone settings (e.g. turn the
+    # area paper off: `zone: {floor_colors: []}`).
+    zone_params = ZoneParams(
+        **{**hsv_cfg.get(ZONE_SECTION, {}), **camera_cfg.get(ZONE_SECTION, {})}
+    )
     return DetectionPipeline(
         detector,
         ZoneLocator(ranges, camera_model, zone_params),
+        BorderParams(**camera_cfg.get(BORDER_SECTION, {})),
+        SupportParams(**camera_cfg.get(SUPPORT_SECTION, {})),
     )
