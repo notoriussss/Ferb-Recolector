@@ -137,6 +137,14 @@ DEFAULT_ENTRY_HIDDEN_DISTANCE_M = 0.15
 DEFAULT_DELIVER_EDGE_TIMEOUT_S = 0.3
 DEFAULT_DELIVER_PUSH_MAX_S = 3.0
 DEFAULT_DELIVER_SPEED_MIN_S = 0.3
+# Cubes of the other robot (camera.avoid_colors): drive around one that is
+# closer than foreign_avoid_distance_m (m) and within foreign_clearance_m (m)
+# of the straight path (half the 186 mm chassis, a cube and some margin). Once
+# dodging, keep sliding until it is foreign_exit_margin_m (m) farther out, so
+# the edge does not flip the direction every tick. TODO measure
+DEFAULT_FOREIGN_AVOID_DISTANCE_M = 0.30
+DEFAULT_FOREIGN_CLEARANCE_M = 0.12
+DEFAULT_FOREIGN_EXIT_MARGIN_M = 0.03
 
 # --- Vision filter used by this tool (section `detection` overrides) ----------
 # Looser than the ROS cube_detector because this tool's camera is not
@@ -232,6 +240,9 @@ class AutoConfig:
     deliver_edge_timeout_s: float = DEFAULT_DELIVER_EDGE_TIMEOUT_S
     deliver_push_max_s: float = DEFAULT_DELIVER_PUSH_MAX_S
     deliver_speed_min_s: float = DEFAULT_DELIVER_SPEED_MIN_S
+    foreign_avoid_distance_m: float = DEFAULT_FOREIGN_AVOID_DISTANCE_M
+    foreign_clearance_m: float = DEFAULT_FOREIGN_CLEARANCE_M
+    foreign_exit_margin_m: float = DEFAULT_FOREIGN_EXIT_MARGIN_M
 
     @classmethod
     def from_dict(cls, values: dict | None) -> "AutoConfig":
