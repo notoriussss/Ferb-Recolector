@@ -764,6 +764,8 @@ def test_squaring_up_stays_committed_when_the_paper_jitters_or_drops_out():
     # Still no paper after the hold: back to heading for the area.
     pilot.step(0.25 + cfg.carry_paper_hold_s + 0.1)
     assert pilot.state.startswith("CARRY") and pilot.state != "CARRY (square)"
+
+
 def test_a_foreign_cube_in_the_way_is_slid_around_while_carrying():
     pilot, vision = make_pilot()
     pilot.carrying = True
