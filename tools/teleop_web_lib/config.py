@@ -12,9 +12,9 @@ from pathlib import Path
 # --- Auto mode defaults (real values: tools/teleop_web.yaml, section auto) ----
 DEFAULT_STOP_DISTANCE_M = 0.125
 DEFAULT_SLOW_DOWN_DISTANCE_M = 0.45
-DEFAULT_FORWARD_SPEED = 0.42
-DEFAULT_ROAM_FORWARD_SPEED = 0.35
-DEFAULT_TURN_SPEED = 0.32
+DEFAULT_FORWARD_SPEED = 0.36
+DEFAULT_ROAM_FORWARD_SPEED = 0.30
+DEFAULT_TURN_SPEED = 0.28
 DEFAULT_SEARCH_TURN_SPEED = 0.25
 DEFAULT_ALIGN_TOLERANCE_RAD = 0.22
 DEFAULT_LOST_TIMEOUT_S = 0.6
@@ -28,7 +28,7 @@ DEFAULT_LINE_STOP_S = 0.2
 DEFAULT_LINE_BACKUP_MAX_S = 0.9
 # How recent the last movement must be for the line recovery to undo it.
 DEFAULT_LINE_MOTION_MEMORY_S = 1.5
-DEFAULT_LINE_SPEED = 0.35
+DEFAULT_LINE_SPEED = 0.30
 # Only the landmarks in view: slow down this far from them (no delivery).
 DEFAULT_ZONE_STOP_DISTANCE_M = 0.59
 # Area paper in view: arrived when its near edge is this close or this low.
@@ -45,7 +45,7 @@ DEFAULT_ROAM_FORWARD_S = 1.0
 # Largest sideways correction while driving toward a target (0-1).
 DEFAULT_STEER_LIMIT = 0.7
 # Slowest approach speed, as a fraction of forward_speed.
-DEFAULT_MIN_SPEED_FRACTION = 0.35
+DEFAULT_MIN_SPEED_FRACTION = 0.70
 # Smallest slow-down span (m), avoids dividing by a near-zero distance.
 DEFAULT_MIN_SLOW_SPAN_M = 0.05
 # A cube seen and then lost from view may be under the scoop (blind spot):
@@ -99,7 +99,7 @@ DEFAULT_DELIVER_INSERT_M = 0.07
 DEFAULT_FORWARD_SPEED_MPS = 0.31
 DEFAULT_CUBE_AHEAD_M = 0.022
 DEFAULT_ENTRY_SQUARE_TOLERANCE_RAD = 0.10
-DEFAULT_STRAFE_SPEED = 0.40
+DEFAULT_STRAFE_SPEED = 0.28
 # A cube this close (m) after backing up from a delivery was left outside
 # the area: the delivery does not count. TODO measure
 DEFAULT_DROP_VERIFY_DISTANCE_M = 0.30
@@ -137,14 +137,29 @@ DEFAULT_ENTRY_HIDDEN_DISTANCE_M = 0.15
 DEFAULT_DELIVER_EDGE_TIMEOUT_S = 0.3
 DEFAULT_DELIVER_PUSH_MAX_S = 3.0
 DEFAULT_DELIVER_SPEED_MIN_S = 0.3
-# Cubes of the other robot (camera.avoid_colors): drive around one that is
-# closer than foreign_avoid_distance_m (m) and within foreign_clearance_m (m)
-# of the straight path (half the 186 mm chassis, a cube and some margin). Once
+# Cubes to avoid (camera.avoid_colors): drive around one that is closer than
+# foreign_avoid_distance_m (m) and within foreign_clearance_m (m) of the
+# straight path (half the 186 mm chassis, a cube and some margin). Once
 # dodging, keep sliding until it is foreign_exit_margin_m (m) farther out, so
-# the edge does not flip the direction every tick. TODO measure
+# the edge does not flip the direction every tick, and slide to the same
+# side for foreign_side_memory_s (s) after the last slide: turning toward a
+# cube behind it puts it in the way again. TODO measure
 DEFAULT_FOREIGN_AVOID_DISTANCE_M = 0.30
-DEFAULT_FOREIGN_CLEARANCE_M = 0.12
+DEFAULT_FOREIGN_CLEARANCE_M = 0.13
 DEFAULT_FOREIGN_EXIT_MARGIN_M = 0.03
+DEFAULT_FOREIGN_SIDE_MEMORY_S = 2.0
+# A cube to avoid seen closer than foreign_memory_distance_m (m) less than
+# foreign_memory_s (s) ago and out of view now may be beside the scoop:
+# back up once (reveal_backup_s) before a catch to see it again; turning
+# toward a yellow one hid a blue one that the push swept in. TODO measure
+DEFAULT_FOREIGN_MEMORY_DISTANCE_M = 0.20
+DEFAULT_FOREIGN_MEMORY_S = 3.0
+# With a cube to avoid within catch_precise_near_m (m) of the target, the
+# catch push starts only with the target within catch_precise_align_rad
+# (rad) of straight ahead: a push a little off centre swept a blue cube in
+# with a yellow one. TODO measure
+DEFAULT_CATCH_PRECISE_NEAR_M = 0.25
+DEFAULT_CATCH_PRECISE_ALIGN_RAD = 0.06
 
 # --- Vision filter used by this tool (section `detection` overrides) ----------
 # Looser than the ROS cube_detector because this tool's camera is not
@@ -243,6 +258,11 @@ class AutoConfig:
     foreign_avoid_distance_m: float = DEFAULT_FOREIGN_AVOID_DISTANCE_M
     foreign_clearance_m: float = DEFAULT_FOREIGN_CLEARANCE_M
     foreign_exit_margin_m: float = DEFAULT_FOREIGN_EXIT_MARGIN_M
+    foreign_side_memory_s: float = DEFAULT_FOREIGN_SIDE_MEMORY_S
+    foreign_memory_distance_m: float = DEFAULT_FOREIGN_MEMORY_DISTANCE_M
+    foreign_memory_s: float = DEFAULT_FOREIGN_MEMORY_S
+    catch_precise_near_m: float = DEFAULT_CATCH_PRECISE_NEAR_M
+    catch_precise_align_rad: float = DEFAULT_CATCH_PRECISE_ALIGN_RAD
 
     @classmethod
     def from_dict(cls, values: dict | None) -> "AutoConfig":
