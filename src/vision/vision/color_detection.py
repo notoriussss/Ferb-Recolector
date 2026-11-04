@@ -484,4 +484,3 @@ def _is_paper_piece(box: tuple, piece_box: tuple) -> bool:
         return False
     gap_px = max(px - (x + w), x - (px + pw), 0)
     return gap_px <= FLOOR_PIECE_MAX_GAP_HEIGHTS * h
-
