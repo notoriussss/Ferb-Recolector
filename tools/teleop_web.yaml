@@ -61,6 +61,9 @@ camera:
     height_m: 0.058
     tilt_rad: 0.1835
   target_colors: [yellow]
+  # Mission: targets are caught and delivered, these are driven around (auto.foreign_*), any
+  # other colour is not looked for at all. The page can change all of it while running.
+  avoid_colors: [red, blue]
   # The delivery area (blue + green paper between the green and red landmarks)
   # is located with the `zone` section of src/vision/config/hsv_ranges.yaml,
   # shared with the ROS cube_detector. Overrides for this tool go here.
@@ -363,6 +366,12 @@ auto:
   # Stop roaming toward the area / legos this close (m). 0.84 turned the robot away from almost
   # anywhere in the 1.17 m arena; 0.35 leaves a robot length before the pink line.
   gate_avoid_distance_m: 0.35
+  # Cubes of camera.avoid_colors: slide around one closer than foreign_avoid_distance_m (m) that
+  # is within foreign_clearance_m (m) of the straight path (half the 186 mm chassis + a cube +
+  # margin), until it is foreign_exit_margin_m (m) farther out. TODO measure
+  foreign_avoid_distance_m: 0.30
+  foreign_clearance_m: 0.12
+  foreign_exit_margin_m: 0.03
 
 # Strict 3x3 cm cube filter: rejects large/flat/irregular objects.
 detection:
@@ -374,6 +383,27 @@ detection:
   # corner, is ~1.2 m from the camera. Real cubes were seen at 27-58 cm.
   # Farther blobs were objects in the room beyond the table.
   max_distance_m: 1.2
+
+# Overhead view in the page: the phone's DroidCam MJPEG stream (its IP changes: check the DroidCam app).
+# DroidCam serves ONE client: close the DroidCam client on the PC. null = no overhead view.
+overhead:
+  url: null
+  width_px: 640
+  jpeg_quality: 60
+  fps: 15
+  # Inner corners of the arena in the 640 px wide frame (top-left, top-right, bottom-right,
+  # bottom-left). Measure them again whenever the phone moves: the robot is the dark blob inside it.
+  arena_px: [[122, 54], [531, 56], [636, 264], [636, 279], [8, 279]]  # 2026-11-04: right corner out of view
+
+# Second phone, opposite side of the track: same settings. Its view cuts the track's bottom-left
+# corner, and the area falls on the right of the frame.
+overhead_2:
+  url: null
+  width_px: 640
+  jpeg_quality: 60
+  fps: 15
+  arena_px: [[108, 106], [514, 108], [590, 350], [0, 350], [0, 303]]  # 2026-11-04
+  zone_columns: [0.75, 1.0]
 
 server:
   host: 0.0.0.0

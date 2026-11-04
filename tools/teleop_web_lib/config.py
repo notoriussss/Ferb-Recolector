@@ -88,6 +88,16 @@ DEFAULT_CARRY_ZONE_TIMEOUT_S = 15.0
 # Without a cube in view, do not roam forward with the gate this close.
 # TODO measure
 DEFAULT_GATE_AVOID_DISTANCE_M = 0.35
+# While carrying, the area out of view for less than this (s) only stops the
+# robot: it flickers, and turning right away makes the robot turn back later.
+DEFAULT_CARRY_ZONE_HOLD_S = 0.0
+# Cubes the mission says to avoid: drive around one that is closer than
+# foreign_avoid_distance_m (m) and within foreign_clearance_m (m) of the
+# straight path. Once dodging, keep sliding until it is foreign_exit_margin_m
+# (m) farther out, so the robot does not flicker at the limit.
+DEFAULT_FOREIGN_AVOID_DISTANCE_M = 0.30
+DEFAULT_FOREIGN_CLEARANCE_M = 0.12
+DEFAULT_FOREIGN_EXIT_MARGIN_M = 0.03
 # Delivery: with the paper's near edge this close (m), face the pink entry
 # line squarely (within entry_square_tolerance_rad), slide sideways at
 # strafe_speed until the paper's centre is within drop_align_tolerance_rad,
@@ -131,6 +141,8 @@ DEFAULT_CARRY_PAPER_SLIDE_S = 2.0
 # Delivery push: stop once the area's far edge is this close (m); 0 = do not
 # use the far edge. TODO measure
 DEFAULT_DELIVER_FAR_STOP_M = 0.142
+DEFAULT_DELIVER_FAR_MIN_SPAN_M = 0.0
+DEFAULT_ASSUME_IN_SCOOP_DISTANCE_M = 0.0
 # With the paper's near edge this close (m) the scoop hides the pink entry
 # line: deliver without squaring instead of waiting for it. TODO measure
 DEFAULT_ENTRY_HIDDEN_DISTANCE_M = 0.15
@@ -166,6 +178,8 @@ SECTION_SERVER = "server"
 SECTION_LINE_SENSOR = "line_sensor"
 SECTION_AUTO = "auto"
 SECTION_DETECTION = "detection"
+SECTION_OVERHEAD = "overhead"
+SECTION_OVERHEAD_2 = "overhead_2"
 
 
 @dataclass(frozen=True)
@@ -212,6 +226,10 @@ class AutoConfig:
     close_align_factor: float = DEFAULT_CLOSE_ALIGN_FACTOR
     carry_zone_timeout_s: float = DEFAULT_CARRY_ZONE_TIMEOUT_S
     gate_avoid_distance_m: float = DEFAULT_GATE_AVOID_DISTANCE_M
+    carry_zone_hold_s: float = DEFAULT_CARRY_ZONE_HOLD_S
+    foreign_avoid_distance_m: float = DEFAULT_FOREIGN_AVOID_DISTANCE_M
+    foreign_clearance_m: float = DEFAULT_FOREIGN_CLEARANCE_M
+    foreign_exit_margin_m: float = DEFAULT_FOREIGN_EXIT_MARGIN_M
     deliver_commit_distance_m: float = DEFAULT_DELIVER_COMMIT_DISTANCE_M
     deliver_insert_m: float = DEFAULT_DELIVER_INSERT_M
     forward_speed_mps: float = DEFAULT_FORWARD_SPEED_MPS
@@ -228,6 +246,8 @@ class AutoConfig:
     square_max_bearing_rad: float = DEFAULT_SQUARE_MAX_BEARING_RAD
     carry_paper_slide_s: float = DEFAULT_CARRY_PAPER_SLIDE_S
     deliver_far_stop_m: float = DEFAULT_DELIVER_FAR_STOP_M
+    deliver_far_min_span_m: float = DEFAULT_DELIVER_FAR_MIN_SPAN_M
+    assume_in_scoop_distance_m: float = DEFAULT_ASSUME_IN_SCOOP_DISTANCE_M
     entry_hidden_distance_m: float = DEFAULT_ENTRY_HIDDEN_DISTANCE_M
     deliver_edge_timeout_s: float = DEFAULT_DELIVER_EDGE_TIMEOUT_S
     deliver_push_max_s: float = DEFAULT_DELIVER_PUSH_MAX_S

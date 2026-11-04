@@ -54,6 +54,17 @@ class Camera:
             else pipeline.latest_detection(now, timeout_s)
         )
 
+    def latest_foreign(self, now: float, timeout_s: float):
+        """
+        The nearest cube to avoid seen less than `timeout_s` ago, or None.
+        """
+        pipeline = self._pipeline
+        return (
+            None
+            if pipeline is None
+            else pipeline.latest_foreign(now, timeout_s)
+        )
+
     def latest_zone(self, now: float, timeout_s: float):
         """
         The delivery gate seen less than `timeout_s` ago, or None.
@@ -62,6 +73,41 @@ class Camera:
         return (
             None if pipeline is None else pipeline.latest_zone(now, timeout_s)
         )
+
+    # ---------- mission (the page's selectors) ----------
+    @property
+    def cube_colors(self) -> list[str]:
+        """
+        Colours the page can use in the mission; empty without detection.
+        """
+        pipeline = self._pipeline
+        return [] if pipeline is None else pipeline.cube_colors
+
+    @property
+    def target_colors(self) -> list[str]:
+        """
+        Colours of the cubes being searched for.
+        """
+        pipeline = self._pipeline
+        return [] if pipeline is None else pipeline.target_colors
+
+    @property
+    def avoid_colors(self) -> list[str]:
+        """
+        Colours of the cubes being driven around.
+        """
+        pipeline = self._pipeline
+        return [] if pipeline is None else pipeline.avoid_colors
+
+    def set_mission(self, targets: list[str], avoid: list[str]) -> None:
+        """
+        Go for `targets` and drive around `avoid` (ValueError if the mission
+        is not valid or there is no detection).
+        """
+        pipeline = self._pipeline
+        if pipeline is None:
+            raise ValueError("no colour detector")
+        pipeline.set_mission(targets, avoid)
 
     # ---------- what the web server asks ----------
     def wait_frame(
