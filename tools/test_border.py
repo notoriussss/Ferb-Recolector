@@ -113,6 +113,21 @@ def test_a_thin_or_pale_band_below_the_cube_is_not_the_tape():
     assert not is_beyond_line(shadow, CUBE, BEYOND)
 
 
+def test_a_blurred_tape_past_the_shadow_still_puts_the_cube_outside():
+    # Seen moving, the tape reads ~0.7 of the table, as dark as the contact
+    # shadow; only the shadow sits right below the cube.
+    blurred = BorderParams(
+        beyond_line=True,
+        beyond_dark_ratio=0.8,
+        beyond_skip_px=6,
+    )
+    shadow = table_frame(tape_rows=(170, 175), tape_value=147)
+    assert not is_beyond_line(shadow, CUBE, blurred)
+    tape = table_frame(tape_rows=(188, 194), tape_value=147)
+    assert is_beyond_line(tape, CUBE, blurred)
+    assert not is_beyond_line(tape, CUBE, BEYOND)
+
+
 def test_cubes_beyond_the_line_are_dropped_only_when_asked():
     frame = table_frame(tape_rows=(200, 210))
     outside = FakeDetection(CUBE)

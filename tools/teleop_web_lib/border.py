@@ -31,6 +31,9 @@ DEFAULT_MIN_DARK_FRACTION = 0.12
 DEFAULT_BEYOND_DARK_RATIO = 0.55
 DEFAULT_BEYOND_ROW_FRACTION = 0.6
 DEFAULT_BEYOND_MIN_ROWS = 3
+# Rows right below the cube left out of the strip (px): its contact shadow,
+# as dark as a far blurred tape, is not tape.
+DEFAULT_BEYOND_SKIP_PX = 0
 
 
 @dataclass(frozen=True)
@@ -48,6 +51,7 @@ class BorderParams:
     beyond_dark_ratio: float = DEFAULT_BEYOND_DARK_RATIO
     beyond_row_fraction: float = DEFAULT_BEYOND_ROW_FRACTION
     beyond_min_rows: int = DEFAULT_BEYOND_MIN_ROWS
+    beyond_skip_px: int = DEFAULT_BEYOND_SKIP_PX
 
 
 def is_beyond_line(
@@ -57,11 +61,11 @@ def is_beyond_line(
 ) -> bool:
     """
     True when a band of tape crosses the floor between the robot and the
-    cube `bbox` (x, y, w, h): the columns of the cube, from its bottom down
-    to the image bottom.
+    cube `bbox` (x, y, w, h): the columns of the cube, from beyond_skip_px
+    below its bottom down to the image bottom.
     """
     x, y, w, h = bbox
-    strip = frame_bgr[y + h :, max(0, x) : x + w]
+    strip = frame_bgr[y + h + params.beyond_skip_px :, max(0, x) : x + w]
     if strip.size == 0:
         return False
     value = strip.max(axis=2)
