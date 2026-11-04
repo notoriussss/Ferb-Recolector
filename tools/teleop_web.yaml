@@ -61,12 +61,22 @@ camera:
     height_m: 0.058
     tilt_rad: 0.1835
   target_colors: [yellow]
-  # Colours of the OTHER robot's cubes: never a target, never delivered, and Auto slides around
-  # one that is in the way (auto.foreign_*). Empty = they are not seen at all. Their HSV comes
-  # from hsv_ranges.yaml, where blue is still the Webots one: recalibrate it with
-  # tools/hsv_tuner.py on the real cubes before listing it here (a wrong range makes the robot
-  # dodge things that are not cubes).
-  avoid_colors: []
+  # Colours of the cubes Auto must never push: never a target, never delivered, and Auto slides
+  # around the ones in the way (auto.foreign_*). Empty = they are not seen at all. Their HSV comes
+  # from hsv_ranges.yaml. The other team catches blue cubes on the real track with that same
+  # range, but check blue and red with tools/hsv_tuner.py on this camera: a wrong range makes the
+  # robot dodge things that are not cubes. The red lego beside the area is dropped with the cubes
+  # in the area (zone.ignore_*) while the area is in view. TODO check on the track.
+  avoid_colors: [blue, red]
+  # A target cube with a cube to avoid this close (m) is skipped: catching it would push both
+  # (half the 186 mm chassis + a cube + margin). TODO measure
+  # 0.13 (was 0.16): yellow cubes 13-16 cm from a blue/red one were left for good; nearer than
+  # this they cannot be caught without pushing both. TODO measure
+  avoid_guard_m: 0.13
+  # A cube to avoid still guards the targets near it this long (s) after it was last seen: a red
+  # cube 5 cm from a yellow one was found in some frames only, and the robot went for the yellow
+  # one, lost it, backed up and came back for 3.5 minutes (11.2026). TODO measure
+  avoid_guard_memory_s: 1.0
   # The delivery area (blue + green paper between the green and red landmarks)
   # is located with the `zone` section of src/vision/config/hsv_ranges.yaml,
   # shared with the ROS cube_detector. Overrides for this tool go here.
@@ -95,7 +105,13 @@ camera:
     # 13.8 cm deep teal sheet between two 1.8 cm lime-green tape strips; the robot enters across
     # the near strip. The teal measured from 30 cm reads H 94-95, S 207-232, V 152-160: far from
     # the table (H ~73, S ~30) and from the dark things behind the area (V ~83).
-    area_teal: [88, 150, 120, 102, 255, 220]
+    # S from 100 (was 150): seen while the robot moves, the sheet up close reads S 90-150, and the
+    # blob kept only part of it; aimed at that part's centre, a delivery ended beside the area. Away
+    # from the area, teal-hue pixels above S 100 are few and scattered (11.2026). TODO recheck
+    # V from 140 (was 120): with S from 100 the black border tape up close (V 115-131) passed for
+    # the sheet, and the robot "delivered" a cube onto the border in mid-track (11.2026). The
+    # blurred sheet keeps 92 % of its pixels.
+    area_teal: [88, 100, 140, 102, 255, 220]
     # The lime strips read H 74-86, S 54-123 from 30 cm, where they are 4-5 rows tall and blend
     # with the teal and the table: this camera renders them sea-green, not yellow (the cubes are
     # H 20-36). TODO measure up close (~15 cm) and narrow it.
@@ -138,6 +154,11 @@ camera:
     # outside the arena and are ignored too. TODO measure
     ignore_floor_margin_m: 0.035
     ignore_gate_depth_m: 0.13
+    # With only the legos, a cube more than this (m) across the line from the robot to the area is
+    # not in it (the area is 16.6 cm wide inside: half of it + a cube + margin). Up close the lego
+    # fills the image and "2 lego heights" covered all of it: a cube 31 cm away was dropped as
+    # delivered and the robot backed up and came back to it for a minute (11.2026). TODO measure
+    ignore_gate_half_width_m: 0.12
     # The temporary area sits at the midpoint of the two legos (the shared 0.38 was for the old
     # graph paper). Cubes inside it are ignored by their distance from this point, so with 0.38
     # a delivered cube near the red lego was not covered and the robot went for it again.
@@ -187,9 +208,14 @@ camera:
     # line and the ones beside the pots, and no cube inside the arena (their contact shadow is
     # ~143; a far blurred line gave 2 rows).
     beyond_line: true
-    beyond_dark_ratio: 0.55
+    # 0.75 (was 0.55): seen while moving, the tape below the yellow basket outside the track read
+    # 0.65-0.74 of the table and was never taken for tape; the robot chased the basket for a minute
+    # (11.2026). Real cubes inside read 0.96 or more below them. The first beyond_skip_px rows
+    # below the cube are left out: its contact shadow is as dark (~0.68).
+    beyond_dark_ratio: 0.75
     beyond_row_fraction: 0.6
     beyond_min_rows: 3
+    beyond_skip_px: 6
 
 line_sensor:
   # GPIO (BCM) of the bottom TCRT5000's DO output. null = no sensor (black line not seen).
@@ -223,11 +249,13 @@ auto:
   # cube's near face at 12.5 cm (row 362), still in view and 5 cm before the paddle tips.
   stop_distance_m: 0.125
   slow_down_distance_m: 0.45
-  forward_speed: 0.42
-  roam_forward_speed: 0.35
+  # Slower (11.2026): sliding sideways at 0.40 the robot crossed the border tape before the line
+  # sensor saw it. TODO check the wheels still move at these values.
+  forward_speed: 0.36
+  roam_forward_speed: 0.30
   # Lowered from 0.38 / 0.32, then 0.34 / 0.28 (operator: the spin was too fast). TODO check
   # the wheels still turn the robot at 0.25.
-  turn_speed: 0.32
+  turn_speed: 0.28
   search_turn_speed: 0.25
   align_tolerance_rad: 0.22
   lost_timeout_s: 0.6
@@ -249,7 +277,7 @@ auto:
   line_backup_s: 0.5
   line_backup_max_s: 0.9
   line_turn_s: 1.2
-  line_speed: 0.35
+  line_speed: 0.30
   # Delivery only starts with the area paper in view. The landmarks only lead there: closer than
   # this (m) to them the robot slows down until the paper shows up. A push started from the
   # landmarks (59 cm away) left the cube ~20 cm short of the paper and still counted it.
@@ -274,8 +302,10 @@ auto:
   roam_forward_s: 1.0
   # Largest sideways correction while driving to a target (0-1).
   steer_limit: 0.7
-  # Slowest approach speed, as a fraction of forward_speed.
-  min_speed_fraction: 0.35
+  # Slowest approach speed, as a fraction of forward_speed. 0.70 (was 0.35): 0.35 of 0.36 is
+  # 11 % duty and the wheels did not turn; the robot sat 18 cm from a cube for 8 s (11.2026).
+  # 0.70 of 0.36 is 0.25, the search turn speed, which does move them. TODO measure
+  min_speed_fraction: 0.70
   # Smallest slow-down span (m), avoids dividing by a near-zero distance.
   min_slow_span_m: 0.05
   # A cube seen and then lost from view may be under the scoop (blind spot):
@@ -342,14 +372,15 @@ auto:
   deliver_speed_min_s: 0.3
   # Fallback speed (m/s) for the blind part when the edge was not seen long enough to measure
   # it: 0.31 on 0.67 s pushes, 0.21 and 0.12 on the short delivery pushes (11.2026).
-  forward_speed_mps: 0.15
+  # 0.13 for forward_speed 0.36 (was 0.15 for 0.42, scaled). TODO measure
+  forward_speed_mps: 0.13
   cube_ahead_m: 0.055
   entry_square_tolerance_rad: 0.10
   # With the paper's near edge this close (m) the scoop hides the pink line: deliver without
   # squaring. Re-catching a cube left at the paper's edge put the robot at 8-14 cm, where it
   # waited "CARRY (no entry line)" for good (11.2026); backing up would leave the cube behind.
   entry_hidden_distance_m: 0.15
-  strafe_speed: 0.40
+  strafe_speed: 0.28
   # A cube this close (m) and within drop_verify_bearing_rad of straight ahead once backed up
   # from a delivery was left outside: it does not count and the robot goes for it again. Without
   # the bearing limit, another cube on the table nearby undid two deliveries that were on the
@@ -376,10 +407,27 @@ auto:
   zone_wait_distance_m: 0.30
   # Cubes of camera.avoid_colors: slide around one closer than foreign_avoid_distance_m (m) that
   # is within foreign_clearance_m (m) of the straight path (half the 186 mm chassis + a cube +
-  # margin), until it is foreign_exit_margin_m (m) farther out. TODO measure
+  # margin), until it is foreign_exit_margin_m (m) farther out. The side is the one with the
+  # shorter slide past every cube near (not into a second one) and is kept for
+  # foreign_side_memory_s (s) after the last slide, also across the turns toward the target in
+  # between: choosing again after each turn slid the robot back and forth. TODO measure
   foreign_avoid_distance_m: 0.30
-  foreign_clearance_m: 0.12
+  # 0.13 (was 0.16, before 0.12): the scoop's paddles stick out past the chassis. A blue cube 13 cm
+  # beside a yellow one was swept in when the push started off centre; the catch now lines up
+  # first (catch_precise_*). TODO measure
+  foreign_clearance_m: 0.13
   foreign_exit_margin_m: 0.03
+  foreign_side_memory_s: 2.0
+  # A cube to avoid seen closer than foreign_memory_distance_m (m) less than foreign_memory_s (s)
+  # ago and out of view now may be beside the scoop: back up once (reveal_backup_s) before a
+  # catch to see it again. Turning toward a yellow cube hid a blue one 13 cm away and the catch
+  # push swept both into the area (11.2026). TODO measure
+  foreign_memory_distance_m: 0.20
+  foreign_memory_s: 3.0
+  # With a cube to avoid within catch_precise_near_m (m) of the target, start the catch push only
+  # with the target within catch_precise_align_rad (rad) of straight ahead. TODO measure
+  catch_precise_near_m: 0.25
+  catch_precise_align_rad: 0.06
 
 # Link to Perry's zone arbiter and the other collector. Needs ROS 2 sourced and fleet_link
 # running next to this tool (same ROS_DOMAIN_ID on all Pis). Off: Auto delivers without turns.

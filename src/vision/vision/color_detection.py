@@ -61,6 +61,14 @@ RIGHT_LANDMARK_AIM_HEIGHTS = 3.2
 # Names of the two kinds of delivery-area estimate (`Region.color`).
 REGION_GATE = "gate"
 REGION_FLOOR = "floor"
+# A cube left on the paper splits its blob in two: pieces at least this
+# fraction of the largest one's area, sharing at least this fraction of the
+# smaller one's rows and at most this many blob heights apart are the same
+# paper. Aimed at the largest piece alone, the robot pushed the next cube
+# beside the area.
+FLOOR_PIECE_MIN_FRACTION = 0.05
+FLOOR_PIECE_MIN_OVERLAP = 0.5
+FLOOR_PIECE_MAX_GAP_HEIGHTS = 3.0
 
 # Binary mask values.
 MASK_ON = 255
@@ -316,8 +324,7 @@ class ColorDetector:
         )
         if not contours:
             return None
-        contour = max(contours, key=cv2.contourArea)
-        area = cv2.contourArea(contour)
+        contour, area = paper_outline(contours)
         _, _, w, h = cv2.boundingRect(contour)
         if area < min_area_px or w < min_flatness * h:
             return None
@@ -441,3 +448,40 @@ def _is_elongated(contour: np.ndarray, min_elongation: float) -> bool:
     width, height = cv2.minAreaRect(contour)[1]
     short_side = max(MIN_BLOB_WIDTH_PX, min(width, height))
     return max(width, height) >= min_elongation * short_side
+
+
+def paper_outline(contours: list) -> tuple[np.ndarray, float]:
+    """
+    Outline (convex hull) and area of the largest blob of `contours`
+    joined with the pieces a cube on the paper split off it: the paper
+    lying on the floor seen from the robot, whole.
+    """
+    ordered = sorted(contours, key=cv2.contourArea, reverse=True)
+    largest = ordered[0]
+    min_area_px = FLOOR_PIECE_MIN_FRACTION * cv2.contourArea(largest)
+    pieces = [largest]
+    box = cv2.boundingRect(largest)
+    for contour in ordered[1:]:
+        if cv2.contourArea(contour) < min_area_px:
+            break
+        piece_box = cv2.boundingRect(contour)
+        if _is_paper_piece(box, piece_box):
+            pieces.append(contour)
+            box = cv2.boundingRect(np.vstack(pieces))
+    area = sum(cv2.contourArea(piece) for piece in pieces)
+    return cv2.convexHull(np.vstack(pieces)), area
+
+
+def _is_paper_piece(box: tuple, piece_box: tuple) -> bool:
+    """
+    True when the blob in `piece_box` shares the rows of the paper in `box`
+    and lies close beside it (x, y, w, h boxes).
+    """
+    x, y, w, h = box
+    px, py, pw, ph = piece_box
+    overlap_px = min(y + h, py + ph) - max(y, py)
+    if overlap_px < FLOOR_PIECE_MIN_OVERLAP * min(h, ph):
+        return False
+    gap_px = max(px - (x + w), x - (px + pw), 0)
+    return gap_px <= FLOOR_PIECE_MAX_GAP_HEIGHTS * h
+

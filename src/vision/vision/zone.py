@@ -29,6 +29,7 @@ from vision.color_detection import (
     Detection,
     Marker,
     Region,
+    paper_outline,
 )
 from vision.hsv import HsvRange
 
@@ -52,6 +53,10 @@ DEFAULT_IGNORE_MARGIN_PX = 80
 # also cover anything behind the area, outside the arena.
 DEFAULT_IGNORE_FLOOR_MARGIN_M = 0.0
 DEFAULT_IGNORE_GATE_DEPTH_M = 0.0
+# With only the gate, how far (m) across the line from the robot to the area
+# a cube may lie and still count as in it (0 = no limit). Up close the
+# landmarks fill the image and the span in landmark heights covers all of it.
+DEFAULT_IGNORE_GATE_HALF_WIDTH_M = 0.0
 # Where the area sits between the left and right landmarks, as a fraction of
 # the distance between them (0 = left one, 1 = right one). 0.38 is where the
 # original graph paper was; a centred area is 0.5.
@@ -65,6 +70,9 @@ DEFAULT_FLOOR_IGNORE_TOUCHING_BOTTOM = False
 # A blob whose lowest row is within this many px of the image bottom
 # touches it.
 FLOOR_BOTTOM_MARGIN_PX = 3
+# A blob whose left or right side is within this many px of that image edge
+# goes on past it.
+FLOOR_SIDE_MARGIN_PX = 3
 
 # Smallest entry line blob (px) whose angle is trusted (TODO measure).
 DEFAULT_ENTRY_MIN_AREA_PX = 150
@@ -109,6 +117,7 @@ class ZoneParams:
     ignore_margin_px: int = DEFAULT_IGNORE_MARGIN_PX
     ignore_floor_margin_m: float = DEFAULT_IGNORE_FLOOR_MARGIN_M
     ignore_gate_depth_m: float = DEFAULT_IGNORE_GATE_DEPTH_M
+    ignore_gate_half_width_m: float = DEFAULT_IGNORE_GATE_HALF_WIDTH_M
     floor_max_area_px: int = DEFAULT_FLOOR_MAX_AREA_PX
     gate_aim_fraction: float = DEFAULT_GATE_AIM_FRACTION
     # Horizontal offset, in landmark heights, from a single visible landmark
@@ -157,10 +166,13 @@ def in_zone(
     margin_px: int,
     floor_margin_m: float = 0.0,
     gate_depth_m: float = 0.0,
+    gate_half_width_m: float = 0.0,
 ) -> bool:
     """
     True when cube `det` already lies inside the delivery area, or on its
     edge or behind it (outside the arena) when the floor margins are set.
+    With only the gate, a cube farther than `gate_half_width_m` (when set)
+    across the line from the robot to the area is not in it.
     """
     x, y, w, h = zone.bbox
     if zone.color == REGION_FLOOR:
@@ -171,6 +183,9 @@ def in_zone(
         return y <= det.v <= y + h
     half_span_px = PAPER_HALF_SPAN_HEIGHTS * h
     if abs(det.u - zone.u) > half_span_px:
+        return False
+    across_m = det.distance_m * math.sin(det.bearing_rad - zone.bearing_rad)
+    if gate_half_width_m > 0 and abs(across_m) > gate_half_width_m:
         return False
     if gate_depth_m > 0:
         return det.distance_m >= zone.distance_m - gate_depth_m
@@ -224,6 +239,7 @@ def without_cubes_in_zone(
     margin_px: int,
     floor_margin_m: float = 0.0,
     gate_depth_m: float = 0.0,
+    gate_half_width_m: float = 0.0,
 ) -> list[Detection]:
     """
     The detections that are not already inside the delivery area (see
@@ -234,7 +250,14 @@ def without_cubes_in_zone(
     return [
         d
         for d in detections
-        if not in_zone(d, zone, margin_px, floor_margin_m, gate_depth_m)
+        if not in_zone(
+            d,
+            zone,
+            margin_px,
+            floor_margin_m,
+            gate_depth_m,
+            gate_half_width_m,
+        )
     ]
 
 
@@ -398,6 +421,12 @@ class ZoneLocator:
         robot must push the cube there from any side. Only the bearing: the
         far outline's rows are a few pixels from the horizon, so the
         centroid's distance was off by up to 20 cm; the near edge's is not.
+
+        Up close the paper is wider than the view: cut by one side of the
+        image only, its centre lies past that side, so the bearing is that
+        side's (the robot slides until it is not cut, or cut by both).
+        Aimed at the centre of the part in view, a robot 9 cm away pushed
+        the cube beside the area.
         """
         x, y, width_px, height_px = floor.bbox
         hsv = cv2.cvtColor(
@@ -414,7 +443,7 @@ class ZoneLocator:
         )
         if not contours:
             return self._aim_at_center(floor)
-        outline = max(contours, key=cv2.contourArea).reshape(-1, 2)
+        outline = paper_outline(contours)[0].reshape(-1, 2)
         ground = [self._camera.ground_point(u + x, v + y) for u, v in outline]
         if None in ground:
             return self._aim_at_center(floor)
@@ -428,8 +457,31 @@ class ZoneLocator:
         return replace(
             floor,
             u=x + width_px // 2,
-            bearing_rad=math.atan2(left_m, forward_m),
+            bearing_rad=self._past_cut_side(
+                floor,
+                bgr.shape[1],
+                math.atan2(left_m, forward_m),
+            ),
         )
+
+    def _past_cut_side(
+        self,
+        floor: Region,
+        frame_width_px: int,
+        bearing_rad: float,
+    ) -> float:
+        """
+        `bearing_rad`, or the bearing of the image side that cuts the paper
+        when only one side does.
+        """
+        x, _, width_px, _ = floor.bbox
+        cut_left = x <= FLOOR_SIDE_MARGIN_PX
+        cut_right = x + width_px >= frame_width_px - FLOOR_SIDE_MARGIN_PX
+        if cut_left == cut_right:
+            return bearing_rad
+        edge_u = 0 if cut_left else frame_width_px - 1
+        edge = self._camera.bearing_distance(edge_u, floor.v)
+        return bearing_rad if edge is None else edge[0]
 
     def _aim_at_center(self, floor: Region) -> Region:
         """

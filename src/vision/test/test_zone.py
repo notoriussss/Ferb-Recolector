@@ -319,3 +319,66 @@ def test_the_area_paper_reports_its_far_edge_beyond_its_near_edge():
     far_expected = CAM.bearing_distance(320, 300)[1]
     assert abs(zone.far_distance_m - far_expected) < 0.005
     assert zone.far_distance_m > zone.distance_m
+
+
+def test_up_close_to_a_lego_only_cubes_in_line_with_the_area_are_dropped():
+    # Beside the lego it fills the image: 2 lego heights span all of it.
+    gate = Region("gate", 54, 480, 5000, (0, 50, 147, 430), 0.5, 0.23)
+    ahead = Detection(
+        "yellow",
+        395,
+        230,
+        40,
+        40,
+        (375, 190, 40, 40),
+        -0.07,
+        0.31,
+    )
+    in_area = Detection(
+        "yellow",
+        60,
+        300,
+        40,
+        40,
+        (40, 260, 40, 40),
+        0.5,
+        0.25,
+    )
+    cubes = [ahead, in_area]
+    assert without_cubes_in_zone(cubes, gate, 10, gate_depth_m=0.13) == []
+    kept = without_cubes_in_zone(
+        cubes,
+        gate,
+        10,
+        gate_depth_m=0.13,
+        gate_half_width_m=0.12,
+    )
+    assert kept == [ahead]
+
+
+def test_paper_cut_by_one_side_of_the_image_is_aimed_past_that_side():
+    params = ZoneParams(floor_colors=["blue"], floor_aim_centre=True)
+    # Up close, cut by the left side only: its centre is farther left.
+    img = blank()
+    paint_hsv(img, 0, 330, 200, 50, BLUE)
+    zone = ZoneLocator(RANGES, CAM, params).locate(img)
+    left_edge_rad = CAM.bearing_distance(0, zone.v)[0]
+    assert abs(zone.bearing_rad - left_edge_rad) < 0.01
+    # Cut by both sides: centred in front of the robot.
+    img = blank()
+    paint_hsv(img, 0, 330, 640, 50, BLUE)
+    zone = ZoneLocator(RANGES, CAM, params).locate(img)
+    assert abs(zone.bearing_rad) < 0.02
+
+
+def test_a_cube_on_the_paper_does_not_shift_its_centre():
+    params = ZoneParams(floor_colors=["blue"], floor_aim_centre=True)
+    whole = blank()
+    paint_hsv(whole, 220, 330, 200, 50, BLUE)
+    centre_rad = ZoneLocator(RANGES, CAM, params).locate(whole).bearing_rad
+    # A delivered cube near the entry splits the paper's blob in two.
+    split = whole.copy()
+    split[320:380, 250:290] = (0, 255, 255)
+    zone = ZoneLocator(RANGES, CAM, params).locate(split)
+    assert abs(zone.bearing_rad - centre_rad) < 0.02
+    assert zone.bbox[0] <= 222 and zone.bbox[0] + zone.bbox[2] >= 418
