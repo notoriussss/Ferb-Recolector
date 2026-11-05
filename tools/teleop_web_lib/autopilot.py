@@ -71,6 +71,9 @@ CHASE_STATES = (
 # Prefixes used to recognise a family of states.
 PREFIX_LINE = "LINE"
 PREFIX_DROP = "DROP"
+# Reason of the peer guard when the other collector is not in the way
+# (mobile_base.peer_avoidance.REASON_OK; peer.py imports this module).
+REASON_PEER_OK = "ok"
 PREFIX_DONE = "DONE"
 PREFIX_NO_CUBES = "NO CUBES"
 STATE_NO_CUBES = f"{PREFIX_NO_CUBES} (stopped)"
@@ -171,6 +174,12 @@ class Fleet(Protocol):
         A cube of `color` was left in the area.
         """
 
+    def poses(self) -> tuple:
+        """
+        The latest (own, other collector) overhead poses, None where none
+        arrived; only read with a peer guard.
+        """
+
 
 def _forward(speed: float) -> DriveCommand:
     """
@@ -222,6 +231,9 @@ class AutoPilot:
         self.vision = vision
         # Link to the other robots; None = alone on the track (no turns).
         self.fleet: Fleet | None = None
+        # Guard against the other collector from the fleet's overhead poses
+        # (teleop_web_lib/peer.py); None = off.
+        self.peer_guard = None
         # Colour of the last cube chased, reported when it is delivered.
         self._cube_color = ""
         # Colour of a counted delivery not yet reported to the fleet.
@@ -336,8 +348,24 @@ class AutoPilot:
         The command for time `now`; `line_black` is the line sensor reading.
         """
         self._near_zone = False
-        command = self._decide(now, line_black)
+        command = self._guard_peer(now, self._decide(now, line_black))
         self._sync_fleet()
+        return command
+
+    def _guard_peer(self, now: float, command: DriveCommand) -> DriveCommand:
+        """
+        Slow, stop or turn away from the other collector in front: the
+        camera does not see it.
+        """
+        if self.peer_guard is None or self.fleet is None:
+            return command
+        command, reason = self.peer_guard.filter(
+            command,
+            self.fleet.poses(),
+            now,
+        )
+        if reason != REASON_PEER_OK:
+            self.target_info = f"peer: {reason}"
         return command
 
     def _sync_fleet(self) -> None:

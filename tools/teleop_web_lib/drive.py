@@ -18,9 +18,10 @@ from teleop_web_lib.autopilot import (
     Fleet,
     Vision,
 )
-from teleop_web_lib.config import AutoConfig
+from teleop_web_lib.config import AutoConfig, PeerConfig
 from teleop_web_lib.kinematics import WHEELS, clamp, mecanum_wheel_ratios
 from teleop_web_lib.line_sensor import counts_to_millivolts
+from teleop_web_lib.peer import PeerGuard
 from teleop_web_lib.state_log import StateLog, auto_snapshot
 
 log = logging.getLogger("teleop_web")
@@ -56,15 +57,19 @@ class Drive:
         cmd_timeout_s: float,
         auto_cfg: AutoConfig | None = None,
         line_sensor=None,
+        peer_cfg: PeerConfig | None = None,
     ):
         """
-        Start the control thread.
+        Start the control thread. With `peer_cfg` on, Auto keeps clear of
+        the other collector once the fleet link gives it poses.
         """
         self._motors = motors
         self._max_duty = max_duty_ratio
         self._timeout_s = cmd_timeout_s
         self._line = line_sensor  # None = no line sensor
         self._pilot = AutoPilot(auto_cfg or AutoConfig())
+        if peer_cfg is not None and peer_cfg.enabled:
+            self._pilot.peer_guard = PeerGuard(peer_cfg)
         self.line_black = False
         self.line_raw: int | None = None
         self.line_counts: int | None = None  # AO through the ADC, if wired

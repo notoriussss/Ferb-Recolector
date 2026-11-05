@@ -37,9 +37,11 @@ from teleop_web_lib.config import (
     SECTION_FLEET,
     SECTION_LINE_SENSOR,
     SECTION_MOTORS,
+    SECTION_PEER,
     SECTION_SERVER,
     AutoConfig,
     FleetConfig,
+    PeerConfig,
     load_config,
 )
 from teleop_web_lib.drive import Drive
@@ -102,6 +104,7 @@ def main() -> None:
         motor_cfg["cmd_timeout_s"],
         AutoConfig.from_dict(cfg.get(SECTION_AUTO)),
         line_sensor=line,
+        peer_cfg=PeerConfig.from_dict(cfg.get(SECTION_PEER)),
     )
     camera = Camera(
         camera_cfg,

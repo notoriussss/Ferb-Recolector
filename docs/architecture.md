@@ -107,7 +107,7 @@ Unless noted with a leading `/`, all names are local to the robot namespace (`/f
 
 ### Browser tool on the fleet
 
-`tools/teleop_web.py` (the calibrated Auto mode) is not a ROS node. With `fleet.enabled: true` in `tools/teleop_web.yaml` it publishes `behavior/state`, `scoop/has_cube`, `zone/want` and `zone/delivered`, and reads `zone/granted`, all under `/ferb`, and `fleet_link` runs next to it (the same `zone/*` topics as `behavior_fsm`). Auto asks for the turn `zone_request_distance_m` from the area and, without it, waits `zone_wait_distance_m` away (`CARRY (wait zone)`). The turn is held through the push and the back up, and released when the sequence ends. A `zone/granted` older than `granted_timeout_s` counts as not granted.
+`tools/teleop_web.py` (the calibrated Auto mode) is not a ROS node. With `fleet.enabled: true` in `tools/teleop_web.yaml` it publishes `behavior/state`, `scoop/has_cube`, `zone/want` and `zone/delivered`, and reads `zone/granted`, all under `/ferb`, and `fleet_link` runs next to it (the same `zone/*` topics as `behavior_fsm`). Auto asks for the turn `zone_request_distance_m` from the area and, without it, waits `zone_wait_distance_m` away (`CARRY (wait zone)`). The turn is held through the push and the back up, and released when the sequence ends. A `zone/granted` older than `granted_timeout_s` counts as not granted. With `peer.enabled: true` it also reads the overhead poses `/ferb/pose` and `fleet.peer_pose_topic` (`/phineas/pose`) and filters every Auto command through `PeerAvoidance`, the same rule as `obstacle_guard` (`tools/teleop_web_lib/peer.py`): the front camera does not see the other collector.
 
 ## Messages
 

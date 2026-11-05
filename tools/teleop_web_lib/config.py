@@ -182,6 +182,21 @@ DEFAULT_FLEET_NAMESPACE = "ferb"
 # A zone/granted older than this counts as not granted.
 DEFAULT_GRANTED_TIMEOUT_S = 2.0
 DEFAULT_REPUBLISH_PERIOD_S = 1.0
+# Overhead pose of the other collector, published by Perry (absolute topic).
+DEFAULT_PEER_POSE_TOPIC = "/phineas/pose"
+
+# --- Peer guard defaults (real values: tools/teleop_web.yaml, section peer) ---
+# The rule agreed with Phineas (docs/external-interface.md, "Peer Avoidance
+# Rules"): a cone ahead, slow then stop, and Ferb yields in a deadlock.
+DEFAULT_PEER_POSE_MAX_AGE_S = 0.5
+DEFAULT_PEER_FRONT_CONE_DEG = 60.0
+DEFAULT_PEER_SLOW_DISTANCE_M = 0.60
+DEFAULT_PEER_STOP_DISTANCE_M = 0.40
+DEFAULT_PEER_DEADLOCK_TIME_S = 3.0
+# Turns in Auto units (a speed in [0, 1], like search_turn_speed), not the
+# rad/s of mobile_base: 0.6 and 0.8 there would spin this robot too fast.
+DEFAULT_PEER_AVOID_TURN_SPEED = 0.25
+DEFAULT_PEER_ESCAPE_TURN_SPEED = 0.30
 
 # --- Vision filter used by this tool (section `detection` overrides) ----------
 # Looser than the ROS cube_detector because this tool's camera is not
@@ -215,6 +230,7 @@ SECTION_LINE_SENSOR = "line_sensor"
 SECTION_AUTO = "auto"
 SECTION_DETECTION = "detection"
 SECTION_FLEET = "fleet"
+SECTION_PEER = "peer"
 
 
 @dataclass(frozen=True)
@@ -315,6 +331,7 @@ class FleetConfig:
     namespace: str = DEFAULT_FLEET_NAMESPACE
     granted_timeout_s: float = DEFAULT_GRANTED_TIMEOUT_S
     republish_period_s: float = DEFAULT_REPUBLISH_PERIOD_S
+    peer_pose_topic: str = DEFAULT_PEER_POSE_TOPIC
 
     @classmethod
     def from_dict(cls, values: dict | None) -> "FleetConfig":
@@ -324,6 +341,32 @@ class FleetConfig:
         Missing keys keep their default; unknown keys raise ValueError.
         """
         return _from_dict(cls, values, SECTION_FLEET)
+
+
+@dataclass(frozen=True)
+class PeerConfig:
+    """
+    Settings of the guard against the other collector, from the overhead
+    poses the fleet bridge receives; field names are the YAML keys.
+    """
+
+    enabled: bool = False
+    pose_max_age_s: float = DEFAULT_PEER_POSE_MAX_AGE_S
+    front_cone_deg: float = DEFAULT_PEER_FRONT_CONE_DEG
+    slow_distance_m: float = DEFAULT_PEER_SLOW_DISTANCE_M
+    stop_distance_m: float = DEFAULT_PEER_STOP_DISTANCE_M
+    deadlock_time_s: float = DEFAULT_PEER_DEADLOCK_TIME_S
+    avoid_turn_speed: float = DEFAULT_PEER_AVOID_TURN_SPEED
+    escape_turn_speed: float = DEFAULT_PEER_ESCAPE_TURN_SPEED
+
+    @classmethod
+    def from_dict(cls, values: dict | None) -> "PeerConfig":
+        """
+        Build the settings from the YAML `peer` section.
+
+        Missing keys keep their default; unknown keys raise ValueError.
+        """
+        return _from_dict(cls, values, SECTION_PEER)
 
 
 def _from_dict(cls, values: dict | None, section: str):

@@ -451,6 +451,25 @@ fleet:
   granted_timeout_s: 2.0
   # Re-send state and wish at least this often, so a restarted fleet_link learns them.
   republish_period_s: 1.0
+  # Overhead pose of the other collector, from Perry's camera (ours is /ferb/pose).
+  peer_pose_topic: /phineas/pose
+
+# Keep clear of the other collector (Phineas): the front camera does not see it, and the two
+# robots collided more than once (11.2026). Uses the overhead poses Perry publishes on
+# /ferb/pose and fleet.peer_pose_topic (theta = where the robot's front points, same frame as
+# x, y); with no fresh pose for either robot it does nothing. The rule is the one agreed with
+# Phineas (docs/external-interface.md): inside a front cone, slow from slow_distance_m, stop at
+# stop_distance_m and turn away; blocked deadlock_time_s, Ferb yields turning in place.
+peer:
+  enabled: true
+  pose_max_age_s: 0.5
+  front_cone_deg: 60.0
+  slow_distance_m: 0.60
+  stop_distance_m: 0.40
+  deadlock_time_s: 3.0
+  # Turns in Auto units (like auto.search_turn_speed), not rad/s. TODO measure
+  avoid_turn_speed: 0.25
+  escape_turn_speed: 0.30
 
 # Strict 3x3 cm cube filter: rejects large/flat/irregular objects.
 detection:

@@ -70,8 +70,11 @@ class FleetBridge:
         import rclpy
         from std_msgs.msg import Bool, String
 
+        from multirobot_interfaces.msg import RobotPose
+
         sys.path.insert(0, str(MOBILE_BASE_PACKAGE_DIR))
         from mobile_base import topics
+        from mobile_base.peer_avoidance import Pose2D
 
         self._cfg = cfg
         self._msg_bool, self._msg_string = Bool, String
@@ -80,6 +83,11 @@ class FleetBridge:
         self._granted_s = float("-inf")
         self._sent: tuple | None = None
         self._sent_s = float("-inf")
+        # Latest overhead poses (own, other collector), stamped with the
+        # monotonic time they arrived: Perry's clock may not match ours.
+        self._pose2d = Pose2D
+        self._own_pose = None
+        self._peer_pose = None
 
         rclpy.init()
         self._rclpy = rclpy
@@ -94,6 +102,18 @@ class FleetBridge:
             Bool,
             topics.TOPIC_ZONE_GRANTED,
             self._on_granted,
+            depth,
+        )
+        self._node.create_subscription(
+            RobotPose,
+            topics.TOPIC_POSE,
+            self._on_own_pose,
+            depth,
+        )
+        self._node.create_subscription(
+            RobotPose,
+            cfg.peer_pose_topic,
+            self._on_peer_pose,
             depth,
         )
         self._thread = threading.Thread(
@@ -111,6 +131,35 @@ class FleetBridge:
         with self._lock:
             self._granted = bool(msg.data)
             self._granted_s = time.monotonic()
+
+    def _on_own_pose(self, msg) -> None:
+        """
+        Perry's overhead camera located us.
+        """
+        pose = self._to_pose(msg)
+        with self._lock:
+            self._own_pose = pose
+
+    def _on_peer_pose(self, msg) -> None:
+        """
+        Perry's overhead camera located the other collector.
+        """
+        pose = self._to_pose(msg)
+        with self._lock:
+            self._peer_pose = pose
+
+    def _to_pose(self, msg):
+        """
+        A RobotPose as a Pose2D stamped with its arrival time.
+        """
+        return self._pose2d(msg.x, msg.y, msg.theta, time.monotonic())
+
+    def poses(self) -> tuple:
+        """
+        The latest (own, other collector) poses; None where none arrived.
+        """
+        with self._lock:
+            return self._own_pose, self._peer_pose
 
     def granted(self) -> bool:
         """
