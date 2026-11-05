@@ -968,6 +968,64 @@ def test_a_foreign_cube_in_the_way_is_slid_around_while_carrying():
     assert "avoiding blue" in pilot.target_info
 
 
+def drive(pilot, now, line_black=False):
+    """
+    One control step as the drive thread does it: decide, then note the
+    motion (the line escape undoes the last one).
+    """
+    command = pilot.step(now, line_black)
+    pilot.note_motion(now, command)
+    return command
+
+
+def recover_from_line(pilot, now):
+    """
+    Hit the line at `now` and step until the line recovery is over; the
+    commands of the recovery and the time it ended.
+    """
+    commands = [drive(pilot, now, line_black=True)]
+    while pilot.state.startswith("LINE") and now < 20.0:
+        now += 0.05
+        commands.append(drive(pilot, now))
+    return commands, now
+
+
+def carrying_with_red_in_the_way():
+    """
+    Carrying toward the area with a red cube a bit to the left in the way:
+    the slide goes right (11.2026, the border was on that side).
+    """
+    pilot, vision = make_pilot()
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    vision.zone = Seen("green", 0.60)
+    vision.foreign = [Seen("red", 0.18, bearing_rad=0.1)]
+    return pilot, vision
+
+
+def test_a_slide_that_hits_the_line_goes_the_other_way_next_time():
+    pilot, vision = carrying_with_red_in_the_way()
+    assert drive(pilot, 0.0).vx > 0  # slides right, toward the border
+    _, now = recover_from_line(pilot, 0.1)
+    assert pilot.carrying  # a sideways hit keeps the cube
+    command = drive(pilot, now + 0.05)
+    assert command.vx < 0 and command.vy == 0  # now left, away from it
+    # The new side is kept past the usual memory (the line is still there).
+    later = now + pilot.cfg.foreign_side_memory_s + 0.5
+    assert drive(pilot, later).vx < 0
+
+
+def test_sliding_into_the_line_twice_turns_away_from_the_border():
+    pilot, vision = carrying_with_red_in_the_way()
+    drive(pilot, 0.0)  # slides right
+    commands, now = recover_from_line(pilot, 0.1)
+    assert all(c.wz == 0 for c in commands)  # first time: no turn
+    assert drive(pilot, now + 0.05).vx < 0  # slides left
+    commands, now = recover_from_line(pilot, now + 0.1)
+    turns = [c.wz for c in commands if c.wz]
+    assert turns and all(wz < 0 for wz in turns)  # line left: turn right
+
+
 def test_a_foreign_cube_off_the_path_or_far_is_ignored():
     pilot, vision = make_pilot()
     pilot.carrying = True

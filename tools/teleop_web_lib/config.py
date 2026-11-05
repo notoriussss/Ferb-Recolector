@@ -153,6 +153,14 @@ DEFAULT_FOREIGN_AVOID_DISTANCE_M = 0.30
 DEFAULT_FOREIGN_CLEARANCE_M = 0.13
 DEFAULT_FOREIGN_EXIT_MARGIN_M = 0.03
 DEFAULT_FOREIGN_SIDE_MEMORY_S = 2.0
+# A slide around a cube to avoid that ends on the line switches to the other
+# side and keeps it foreign_line_side_memory_s (s): the same side slid into
+# the border again and again past a red cube near it (11.2026). After
+# foreign_loop_hits such hits within foreign_loop_window_s (s) the robot
+# also turns away from the border before going on. TODO measure
+DEFAULT_FOREIGN_LINE_SIDE_MEMORY_S = 6.0
+DEFAULT_FOREIGN_LOOP_HITS = 2
+DEFAULT_FOREIGN_LOOP_WINDOW_S = 12.0
 # A cube to avoid seen closer than foreign_memory_distance_m (m) less than
 # foreign_memory_s (s) ago and out of view now may be beside the scoop:
 # back up once (reveal_backup_s) before a catch to see it again; turning
@@ -303,6 +311,9 @@ class AutoConfig:
     foreign_clearance_m: float = DEFAULT_FOREIGN_CLEARANCE_M
     foreign_exit_margin_m: float = DEFAULT_FOREIGN_EXIT_MARGIN_M
     foreign_side_memory_s: float = DEFAULT_FOREIGN_SIDE_MEMORY_S
+    foreign_line_side_memory_s: float = DEFAULT_FOREIGN_LINE_SIDE_MEMORY_S
+    foreign_loop_hits: int = DEFAULT_FOREIGN_LOOP_HITS
+    foreign_loop_window_s: float = DEFAULT_FOREIGN_LOOP_WINDOW_S
     foreign_memory_distance_m: float = DEFAULT_FOREIGN_MEMORY_DISTANCE_M
     foreign_memory_s: float = DEFAULT_FOREIGN_MEMORY_S
     catch_precise_near_m: float = DEFAULT_CATCH_PRECISE_NEAR_M

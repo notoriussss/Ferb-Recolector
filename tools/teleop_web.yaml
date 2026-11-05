@@ -419,6 +419,13 @@ auto:
   foreign_clearance_m: 0.13
   foreign_exit_margin_m: 0.03
   foreign_side_memory_s: 2.0
+  # A slide around a cube to avoid that ends on the line switches side and keeps the new one this
+  # long (s); after foreign_loop_hits such hits within foreign_loop_window_s (s) the robot also
+  # turns away from the border (line_turn_s). A red cube near the border made it slide into the
+  # line, back off and slide into it again for ~15 s (11.2026). TODO measure
+  foreign_line_side_memory_s: 6.0
+  foreign_loop_hits: 2
+  foreign_loop_window_s: 12.0
   # A cube to avoid seen closer than foreign_memory_distance_m (m) less than foreign_memory_s (s)
   # ago and out of view now may be beside the scoop: back up once (reveal_backup_s) before a
   # catch to see it again. Turning toward a yellow cube hid a blue one 13 cm away and the catch

@@ -249,6 +249,13 @@ class AutoPilot:
         self._dodge_side_until_s = -math.inf
         # The last command was a slide around a cube to avoid.
         self._dodging = False
+        # Times of the recent slides around a cube to avoid that ended on
+        # the line, to break the loop "slide into the border, back off".
+        self._dodge_line_hits: list[float] = []
+        # Line recovery: turn after moving away, and which way (None: the
+        # search direction).
+        self._line_needs_turn = False
+        self._line_turn_dir: float | None = None
         # When a cube to avoid was last seen closer than
         # foreign_memory_distance_m: one that left the view since may be
         # right beside the scoop. Before a catch the robot backs up once
@@ -427,7 +434,10 @@ class AutoPilot:
                 self._foreign_near(now),
                 cfg.foreign_clearance_m,
             )
-        self._dodge_side_until_s = now + cfg.foreign_side_memory_s
+        self._dodge_side_until_s = max(
+            self._dodge_side_until_s,
+            now + cfg.foreign_side_memory_s,
+        )
         cube = blocking[0]
         if self.state == STATE_CATCH:
             self.state = STATE_APPROACH
@@ -511,6 +521,7 @@ class AutoPilot:
         cfg = self.cfg
         self._ban_cubes_if_chasing_one(now)
         self._escape = self._escape_command(now)
+        loop = self._note_dodge_into_line(now)
         self._settle_cube_on_line(sideways=self._escape.vx != 0)
         if not self.enabled:
             self._resume_state = STATE_PAUSED
@@ -521,13 +532,35 @@ class AutoPilot:
         self.state = STATE_LINE_STOP
         self._line_stop_until = now + cfg.line_stop_s
         self._phase_until = self._line_stop_until + cfg.line_backup_s
-        # Spin inward only when we hit the line going forward in Auto mode.
-        needs_turn = (
+        # Spin inward when we hit the line going forward in Auto mode, or
+        # away from the border when slides keep ending on it.
+        self._line_needs_turn = loop or (
             self.enabled and self._escape.vy < 0 and self._escape.vx == 0
         )
-        turn_s = cfg.line_turn_s if needs_turn else 0.0
+        turn_s = cfg.line_turn_s if self._line_needs_turn else 0.0
         self._line_turn_until = self._phase_until + turn_s
         self.target_info = None
+
+    def _note_dodge_into_line(self, now: float) -> bool:
+        """
+        A slide around a cube to avoid ended on the line: slide the other
+        way from now on. True when it keeps happening (foreign_loop_hits
+        within foreign_loop_window_s): then also turn away from the border.
+        """
+        cfg = self.cfg
+        slid = self._dodge_dir
+        if not self._dodging or slid is None or self._escape.vx == 0:
+            return False
+        self._dodge_dir = -slid
+        self._dodge_side_until_s = now + cfg.foreign_line_side_memory_s
+        window_s = cfg.foreign_loop_window_s
+        hits = [t for t in self._dodge_line_hits if now - t <= window_s]
+        self._dodge_line_hits = hits + [now]
+        if len(self._dodge_line_hits) < cfg.foreign_loop_hits:
+            return False
+        self._dodge_line_hits = []
+        self._line_turn_dir = -slid  # the border is on the side it slid to
+        return True
 
     def _ban_cubes_if_chasing_one(self, now: float) -> None:
         """
@@ -624,18 +657,15 @@ class AutoPilot:
             # leaves the border before turning.
             backing_s = now - self._line_stop_until
             if self._line_black and backing_s < cfg.line_backup_max_s:
-                needs_turn = (
-                    self.enabled
-                    and self._escape.vy < 0
-                    and self._escape.vx == 0
-                )
-                turn_s = cfg.line_turn_s if needs_turn else 0.0
+                turn_s = cfg.line_turn_s if self._line_needs_turn else 0.0
                 self._phase_until = now + cfg.line_backup_s
                 self._line_turn_until = self._phase_until + turn_s
             return self._escape
         if now < self._line_turn_until:
             self.state = STATE_LINE_TURN
-            return _turn(self._search_dir, cfg.turn_speed)
+            direction = self._line_turn_dir or self._search_dir
+            return _turn(direction, cfg.turn_speed)
+        self._line_turn_dir = None
         self._last_motion = None
         self.state = self._resume_state
         self._search_start_s = now
