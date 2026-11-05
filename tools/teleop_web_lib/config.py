@@ -146,6 +146,13 @@ DEFAULT_ZONE_WAIT_DISTANCE_M = 0.30
 # zone_request_distance_m: one frame reading the legos 48 cm away dropped the
 # wish and fleet_link gave the turn back before the cube went in (5.11.2026).
 DEFAULT_ZONE_WANT_HOLD_S = 3.0
+# Exclusion zone around the area (m): while another robot or Perry holds the
+# turn, stay farther than this from it, also when going for a cube; after a
+# delivery, keep the turn until this far away, or zone_leave_max_s (s) at
+# most. 0 = off. The two collectors collided at the area and bent their
+# scoops (5.11.2026). TODO measure
+DEFAULT_ZONE_EXCLUSION_M = 0.0
+DEFAULT_ZONE_LEAVE_MAX_S = 0.0
 # Cubes to avoid (camera.avoid_colors): drive around one that is closer than
 # foreign_avoid_distance_m (m) and within foreign_clearance_m (m) of the
 # straight path (half the 186 mm chassis, a cube and some margin). Once
@@ -312,6 +319,8 @@ class AutoConfig:
     zone_request_distance_m: float = DEFAULT_ZONE_REQUEST_DISTANCE_M
     zone_wait_distance_m: float = DEFAULT_ZONE_WAIT_DISTANCE_M
     zone_want_hold_s: float = DEFAULT_ZONE_WANT_HOLD_S
+    zone_exclusion_m: float = DEFAULT_ZONE_EXCLUSION_M
+    zone_leave_max_s: float = DEFAULT_ZONE_LEAVE_MAX_S
     foreign_avoid_distance_m: float = DEFAULT_FOREIGN_AVOID_DISTANCE_M
     foreign_clearance_m: float = DEFAULT_FOREIGN_CLEARANCE_M
     foreign_exit_margin_m: float = DEFAULT_FOREIGN_EXIT_MARGIN_M

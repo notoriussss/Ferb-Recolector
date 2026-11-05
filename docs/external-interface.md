@@ -50,6 +50,16 @@ From `mobile_base/core/safety.py` upstream, mirrored in Ferb's `PeerAvoidance`:
 - `stop_distance_m` = 0.40 m: stop forward motion entirely.
 - `deadlock_time_s` = 3.0 s: if blocked for >3 s, **Ferb is the robot that yields**: rotate in place at `escape_turn_rad_s` = 0.8 rad/s away from peer until peer leaves the cone.
 
+### 4. Delivery Area Exclusion
+Proposed by Ferb (5.11.2026) after the two collectors collided at the area and bent their scoops. Only the robot that holds the turn may be near the area:
+- **Exclusion zone**: 0.55 m from the area. While `/zone/occupant` is another robot or `perry`, stay farther than that, also when going for a cube near the area.
+- **Ask early**: carrying a cube, request the turn 0.70 m from the area, before the exclusion zone.
+- **Wait outside**: without the turn, wait still at 0.55 m or more, not at the entry.
+- **Leave, then release**: after delivering, keep the turn until the robot is out of the exclusion zone (0.55 m), 5 s at most, and only then call `/zone/release`.
+- **Perry first**: with `occupant = perry` (scanning or sorting), nobody enters.
+
+In Ferb: `auto.zone_request_distance_m`, `zone_wait_distance_m`, `zone_exclusion_m` and `zone_leave_max_s` in `tools/teleop_web.yaml`; the logic is in `tools/teleop_web_lib/autopilot.py` (`_must_avoid`, `_end_drop`, `_check_left_zone`) and `fleet.py` (`zone_busy`, from `/zone/occupant`).
+
 ---
 
 ## Future extensions (not in current scope)

@@ -423,10 +423,17 @@ auto:
   # anywhere in the 1.17 m arena; 0.35 leaves a robot length before the pink line.
   gate_avoid_distance_m: 0.35
   # Fleet turns (only with fleet.enabled): ask for the delivery turn this far from the area (m)
-  # and, without it, wait this far away (m). Same as zone_request_margin_m / zone_wait_margin_m in
-  # collector.yaml. TODO measure
-  zone_request_distance_m: 0.45
-  zone_wait_distance_m: 0.30
+  # and, without it, wait this far away (m). 0.70 / 0.55 (were 0.45 / 0.30): the robot waiting
+  # at the entry and the one delivering collided and bent their scoops (5.11.2026); now the turn
+  # is settled before the exclusion zone and the other robot waits outside it. TODO measure
+  zone_request_distance_m: 0.70
+  zone_wait_distance_m: 0.55
+  # Exclusion zone (m), agreed with Phineas: while another robot or Perry holds the area
+  # (/zone/occupant), keep farther than this from it, also when going for a cube; after a
+  # delivery, keep the turn until the area is seen this far away (or zone_leave_max_s, s).
+  # TODO measure
+  zone_exclusion_m: 0.55
+  zone_leave_max_s: 5.0
   # Keep wanting the turn this long (s) after the area was last seen within
   # zone_request_distance_m: one frame reading the legos at 48 cm dropped the wish and the turn was
   # given back before the cube went in, five times in a row (5.11.2026). TODO measure

@@ -174,6 +174,11 @@ class Fleet(Protocol):
         A cube of `color` was left in the area.
         """
 
+    def zone_busy(self) -> bool:
+        """
+        True while another robot or Perry holds the delivery area.
+        """
+
     def poses(self) -> tuple:
         """
         The latest (own, other collector) overhead poses, None where none
@@ -242,6 +247,10 @@ class AutoPilot:
         # and when it last was: the wish is kept zone_want_hold_s past it.
         self._near_zone = False
         self._near_zone_s = -math.inf
+        # After a delivery the turn is kept until the robot is out of the
+        # exclusion zone (or until this time): the next one must not come in
+        # while we are still at the entry.
+        self._leaving_until_s = -math.inf
         # The last wish for the turn sent to the fleet (for the state log).
         self.fleet_want = False
         # Side of the slide around the cubes to avoid (None before the
@@ -341,6 +350,7 @@ class AutoPilot:
         self.state = STATE_MANUAL
         self._near_zone = False
         self._near_zone_s = -math.inf
+        self._leaving_until_s = -math.inf
         self._sync_fleet()
 
     def mark_paused(self) -> None:
@@ -351,6 +361,7 @@ class AutoPilot:
         self.state = STATE_PAUSED
         self._near_zone = False
         self._near_zone_s = -math.inf
+        self._leaving_until_s = -math.inf
         self._sync_fleet()
 
     # ---------- main step ----------
@@ -362,8 +373,31 @@ class AutoPilot:
         command = self._guard_peer(now, self._decide(now, line_black))
         if self._near_zone:
             self._near_zone_s = now
+        self._check_left_zone(now)
         self._sync_fleet(now)
         return command
+
+    def _check_left_zone(self, now: float) -> None:
+        """
+        After a delivery, stop holding the turn once the area is seen
+        farther than zone_exclusion_m.
+        """
+        if now >= self._leaving_until_s:
+            return
+        zone = self._zone_in_view(now)
+        if zone is not None and zone.distance_m > self.cfg.zone_exclusion_m:
+            self._leaving_until_s = -math.inf
+
+    def _other_holds_zone(self) -> bool:
+        """
+        True while another robot or Perry holds the delivery area (the
+        exclusion zone is on and there is a fleet).
+        """
+        return (
+            self.cfg.zone_exclusion_m > 0
+            and self.fleet is not None
+            and self.fleet.zone_busy()
+        )
 
     def _guard_peer(self, now: float, command: DriveCommand) -> DriveCommand:
         """
@@ -394,8 +428,11 @@ class AutoPilot:
             now is not None
             and now - self._near_zone_s <= self.cfg.zone_want_hold_s
         )
-        want = self.state.startswith(PREFIX_DROP) or (
-            self.carrying and (self._near_zone or recently_near)
+        leaving = now is not None and now < self._leaving_until_s
+        want = (
+            self.state.startswith(PREFIX_DROP)
+            or leaving
+            or (self.carrying and (self._near_zone or recently_near))
         )
         self.fleet_want = want
         self.fleet.update(self.state, want, self.carrying)
@@ -799,8 +836,11 @@ class AutoPilot:
 
     def _end_drop(self, now: float) -> None:
         """
-        Back to looking for cubes, with a fresh search.
+        Back to looking for cubes, with a fresh search; the turn is kept
+        until the robot is out of the exclusion zone.
         """
+        if self.cfg.zone_exclusion_m > 0:
+            self._leaving_until_s = now + self.cfg.zone_leave_max_s
         self.state = STATE_SEARCH
         self._search_start_s = now
         self._idle_start_s = now
@@ -853,6 +893,10 @@ class AutoPilot:
             det = self.vision.latest_detection(now, cfg.lost_timeout_s)
         if det is None:
             return self._no_cube_step(now)
+        zone = self._zone_in_view(now)
+        if self._other_holds_zone() and self._must_avoid(zone):
+            # A cube by the area while another robot delivers: keep clear.
+            return self._avoid_step(zone)
 
         self.target_info = f"{det.color} {det.distance_m * CM_PER_M:.0f}cm"
         self._last_seen_s = now
@@ -992,11 +1036,17 @@ class AutoPilot:
         """
         True when the delivery area or its legos are this close and no cube
         is in view: roaming forward there ran the robot over the legos and
-        along the area's black tape.
+        along the area's black tape. While another robot or Perry holds the
+        area, closer than zone_exclusion_m too: the collectors collided
+        there.
         """
+        if zone is None:
+            return False
+        if zone.distance_m <= self.cfg.gate_avoid_distance_m:
+            return True
         return (
-            zone is not None
-            and zone.distance_m <= self.cfg.gate_avoid_distance_m
+            zone.distance_m <= self.cfg.zone_exclusion_m
+            and self._other_holds_zone()
         )
 
     def _avoid_step(self, zone) -> DriveCommand:

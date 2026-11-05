@@ -799,6 +799,7 @@ class StubFleet:
 
     def __init__(self, ok=False):
         self.ok = ok
+        self.busy = False  # another robot or Perry holds the area
         self.want = False
         self.sent = []
         self.delivered_colors = []
@@ -812,6 +813,9 @@ class StubFleet:
 
     def delivered(self, color):
         self.delivered_colors.append(color)
+
+    def zone_busy(self):
+        return self.busy
 
 
 def make_fleet_pilot(ok=False):
@@ -877,6 +881,76 @@ def test_keeps_the_turn_through_the_push_and_releases_it_after_backing_up():
     assert pilot.state == "DROP (turn)" and fleet.want
     pilot.step(end_s + 1.2)
     assert pilot.state.startswith("EXPLORE") and not fleet.want
+
+
+def with_exclusion(pilot):
+    """
+    The pilot with the area's exclusion zone on (as in teleop_web.yaml).
+    """
+    from dataclasses import replace
+
+    pilot.cfg = replace(pilot.cfg, zone_exclusion_m=0.55, zone_leave_max_s=5.0)
+    return pilot
+
+
+def test_while_another_robot_delivers_the_area_is_kept_clear():
+    pilot, vision, fleet = make_fleet_pilot()
+    with_exclusion(pilot)
+    pilot.carrying = False
+    pilot.state = "SEARCH"
+    vision.zone = Seen("floor", 0.50, bearing_rad=0.2)  # past gate_avoid
+    pilot.step(0.0)
+    assert pilot.state != "EXPLORE (avoid gate)"  # nobody there: roam on
+    fleet.busy = True  # 5.11.2026: the robots collided at the area
+    command = pilot.step(0.1)
+    assert pilot.state == "EXPLORE (avoid gate)" and command.vy == 0.0
+
+
+def test_a_cube_near_the_area_waits_while_another_robot_holds_it():
+    pilot, vision, fleet = make_fleet_pilot()
+    with_exclusion(pilot)
+    pilot.carrying = False
+    pilot.state = "SEARCH"
+    fleet.busy = True
+    vision.zone = Seen("floor", 0.45, bearing_rad=0.0)
+    vision.det = Seen("yellow", 0.40)  # in front of the area
+    command = pilot.step(0.0)
+    assert pilot.state == "EXPLORE (avoid gate)" and command.vy == 0.0
+    fleet.busy = False
+    pilot.step(0.1)
+    assert pilot.state != "EXPLORE (avoid gate)"
+
+
+def test_the_turn_is_given_back_only_once_out_of_the_exclusion():
+    pilot, vision, fleet = make_fleet_pilot(ok=True)
+    with_exclusion(pilot)
+    vision.zone = Seen("floor", 0.11)
+    pilot.step(0.0)
+    vision.zone = None
+    pilot.step(0.05)
+    end_s = blind_push_end_s(pilot.cfg, 0.11, 0.0, 0.05)
+    pilot.step(end_s + 1.2)  # turned around: back to searching
+    assert pilot.state.startswith("EXPLORE") and fleet.want  # still close
+    vision.zone = Seen("floor", 0.40)
+    pilot.step(end_s + 1.5)
+    assert fleet.want  # inside the exclusion
+    vision.zone = Seen("floor", 0.70)
+    pilot.step(end_s + 2.0)
+    assert not fleet.want  # out: the next robot may come in
+
+
+def test_the_turn_is_given_back_at_the_latest_after_zone_leave_max_s():
+    pilot, vision, fleet = make_fleet_pilot(ok=True)
+    with_exclusion(pilot)
+    vision.zone = Seen("floor", 0.11)
+    pilot.step(0.0)
+    vision.zone = None
+    pilot.step(0.05)
+    end_s = blind_push_end_s(pilot.cfg, 0.11, 0.0, 0.05)
+    pilot.step(end_s + 1.2)
+    assert fleet.want
+    pilot.step(end_s + 1.2 + pilot.cfg.zone_leave_max_s + 0.1)
+    assert not fleet.want
 
 
 def test_reports_the_delivered_cube_colour_to_the_fleet():

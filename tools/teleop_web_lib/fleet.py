@@ -68,6 +68,7 @@ class FleetBridge:
         # Imported here: neither rclpy nor the ROS packages exist on the
         # laptop.
         import rclpy
+        from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
         from std_msgs.msg import Bool, String
 
         from multirobot_interfaces.msg import RobotPose
@@ -88,6 +89,9 @@ class FleetBridge:
         self._pose2d = Pose2D
         self._own_pose = None
         self._peer_pose = None
+        # Who holds the delivery area ("" free), and when Perry said so.
+        self._occupant = ""
+        self._occupant_s = float("-inf")
 
         rclpy.init()
         self._rclpy = rclpy
@@ -103,6 +107,18 @@ class FleetBridge:
             topics.TOPIC_ZONE_GRANTED,
             self._on_granted,
             depth,
+        )
+        # Perry latches the occupant: a late subscriber gets the last one.
+        occupant_qos = QoSProfile(
+            depth=topics.OCCUPANT_QOS_DEPTH,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self._node.create_subscription(
+            String,
+            topics.TOPIC_ZONE_OCCUPANT,
+            self._on_occupant,
+            occupant_qos,
         )
         self._node.create_subscription(
             RobotPose,
@@ -131,6 +147,26 @@ class FleetBridge:
         with self._lock:
             self._granted = bool(msg.data)
             self._granted_s = time.monotonic()
+
+    def _on_occupant(self, msg) -> None:
+        """
+        Perry announced who holds the delivery area (its heartbeat too).
+        """
+        with self._lock:
+            self._occupant = str(msg.data)
+            self._occupant_s = time.monotonic()
+
+    def zone_busy(self) -> bool:
+        """
+        True while another robot or Perry holds the delivery area. Silence
+        (no heartbeat) counts as not busy: the turn is refused then anyway.
+        """
+        with self._lock:
+            fresh = (
+                time.monotonic() - self._occupant_s
+            ) <= self._cfg.granted_timeout_s
+            occupant = self._occupant
+        return fresh and occupant not in ("", self._cfg.namespace)
 
     def _on_own_pose(self, msg) -> None:
         """
