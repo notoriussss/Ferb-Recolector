@@ -12,10 +12,12 @@ from vision.hsv import parse_hsv_ranges
 from vision.zone import (
     ZoneLocator,
     ZoneParams,
+    beside_zone,
     choose_zone,
     entry_angle,
     is_plausible_floor,
     polygon_centroid,
+    without_cubes_beside_zone,
     without_cubes_in_zone,
 )
 
@@ -382,3 +384,20 @@ def test_a_cube_on_the_paper_does_not_shift_its_centre():
     zone = ZoneLocator(RANGES, CAM, params).locate(split)
     assert abs(zone.bearing_rad - centre_rad) < 0.02
     assert zone.bbox[0] <= 222 and zone.bbox[0] + zone.bbox[2] >= 418
+
+
+def test_a_target_level_with_the_area_and_beside_it_is_off_the_arena():
+    # Frame of 5.11.2026 16:42:18: the legos' box and the yellow pot that
+    # stands beside the area (outside the arena) read as a cube at 39 cm.
+    gate = Region("gate", 528, 213, 9000, (415, 125, 225, 88), -0.3, 0.59)
+    pot = cube_at(390, 215, 55, 0.39)
+    in_front = cube_at(300, 330, 40, 0.25)  # nearer: inside the arena
+    far_side = cube_at(5, 214, 20, 0.60)  # level, but far to the side
+    cubes = [pot, in_front, far_side]
+    assert not beside_zone(pot, gate, row_margin_px=0)  # off by default
+    assert beside_zone(pot, gate, row_margin_px=12)
+    assert not beside_zone(in_front, gate, row_margin_px=12)
+    assert not beside_zone(far_side, gate, 12, width_factor=1.0)
+    kept = without_cubes_beside_zone(cubes, gate, 12, width_factor=1.0)
+    assert kept == [in_front, far_side]
+    assert without_cubes_beside_zone(cubes, None, 12) == cubes

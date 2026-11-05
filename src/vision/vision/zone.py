@@ -57,6 +57,13 @@ DEFAULT_IGNORE_GATE_DEPTH_M = 0.0
 # a cube may lie and still count as in it (0 = no limit). Up close the
 # landmarks fill the image and the span in landmark heights covers all of it.
 DEFAULT_IGNORE_GATE_HALF_WIDTH_M = 0.0
+# A cube whose base is no more than this many px below the area's lowest row
+# and beside it (within this many area widths of its box) is level with the
+# area or beyond it: the area sits at the arena's edge, so that is on the
+# border or outside. 0 = off. The yellow pot beside the area read as a yellow
+# cube and the robot went for it again and again (11.2026).
+DEFAULT_BESIDE_ROW_MARGIN_PX = 0
+DEFAULT_BESIDE_WIDTH_FACTOR = 1.0
 # Where the area sits between the left and right landmarks, as a fraction of
 # the distance between them (0 = left one, 1 = right one). 0.38 is where the
 # original graph paper was; a centred area is 0.5.
@@ -118,6 +125,8 @@ class ZoneParams:
     ignore_floor_margin_m: float = DEFAULT_IGNORE_FLOOR_MARGIN_M
     ignore_gate_depth_m: float = DEFAULT_IGNORE_GATE_DEPTH_M
     ignore_gate_half_width_m: float = DEFAULT_IGNORE_GATE_HALF_WIDTH_M
+    beside_row_margin_px: int = DEFAULT_BESIDE_ROW_MARGIN_PX
+    beside_width_factor: float = DEFAULT_BESIDE_WIDTH_FACTOR
     floor_max_area_px: int = DEFAULT_FLOOR_MAX_AREA_PX
     gate_aim_fraction: float = DEFAULT_GATE_AIM_FRACTION
     # Horizontal offset, in landmark heights, from a single visible landmark
@@ -190,6 +199,45 @@ def in_zone(
     if gate_depth_m > 0:
         return det.distance_m >= zone.distance_m - gate_depth_m
     return det.v <= y + h + margin_px
+
+
+def beside_zone(
+    det: Detection,
+    zone: Region,
+    row_margin_px: int,
+    width_factor: float = DEFAULT_BESIDE_WIDTH_FACTOR,
+) -> bool:
+    """
+    True when cube `det` is level with the area or beyond it, beside it
+    (within `width_factor` area widths of its box): on the arena's edge or
+    outside it. Never with `row_margin_px` 0.
+    """
+    if row_margin_px <= 0:
+        return False
+    x, _, w, _ = zone.bbox
+    reach_px = width_factor * w
+    if not x - reach_px <= det.u <= x + w + reach_px:
+        return False
+    return det.v <= zone.v + row_margin_px
+
+
+def without_cubes_beside_zone(
+    detections: list[Detection],
+    zone: Region | None,
+    row_margin_px: int,
+    width_factor: float = DEFAULT_BESIDE_WIDTH_FACTOR,
+) -> list[Detection]:
+    """
+    The detections that are not level with the area and beside it (see
+    `beside_zone`).
+    """
+    if zone is None:
+        return list(detections)
+    return [
+        d
+        for d in detections
+        if not beside_zone(d, zone, row_margin_px, width_factor)
+    ]
 
 
 def polygon_centroid(

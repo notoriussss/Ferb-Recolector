@@ -155,6 +155,7 @@ class DetectionPipeline:
             zone_params.ignore_gate_depth_m,
             zone_params.ignore_gate_half_width_m,
         )
+        detections = self._without_targets_beside(detections, zone)
         detections = without_cubes_near_border(frame, detections, self._border)
         detections = without_cubes_off_table(frame, detections, self._support)
         now = time.monotonic()
@@ -182,6 +183,26 @@ class DetectionPipeline:
         if zone is not None:
             draw_region(annotated, zone)
         return annotated
+
+    def _without_targets_beside(self, detections: list, zone) -> list:
+        """
+        Drop cubes to go for that are level with the area and beside it
+        (vision/zone.py: off the arena). Cubes to avoid are kept: one beside
+        the area must still be slid around.
+        """
+        from vision.zone import without_cubes_beside_zone
+
+        params = self._zone_locator.params
+        targets = [d for d in detections if d.color not in self._avoid_colors]
+        kept = without_cubes_beside_zone(
+            targets,
+            zone,
+            params.beside_row_margin_px,
+            params.beside_width_factor,
+        )
+        return [
+            d for d in detections if d.color in self._avoid_colors or d in kept
+        ]
 
     def _remember(self, best, foreign, zone, guarded: bool) -> None:
         """

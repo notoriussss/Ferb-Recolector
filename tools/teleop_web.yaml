@@ -160,6 +160,14 @@ camera:
     # fills the image and "2 lego heights" covered all of it: a cube 31 cm away was dropped as
     # delivered and the robot backed up and came back to it for a minute (11.2026). TODO measure
     ignore_gate_half_width_m: 0.12
+    # A cube to go for whose base is at most beside_row_margin_px below the area's lowest row and
+    # beside it (within beside_width_factor area widths of its box) is level with the area or
+    # beyond: the area is at the arena's edge, so it is off the arena. The yellow pot beside the
+    # area (base 2 px below the legos') read as a cube at 39 cm and the robot went for it again and
+    # again, never turning to two real cubes behind it (5.11.2026). Cubes to avoid are kept.
+    # TODO measure
+    beside_row_margin_px: 12
+    beside_width_factor: 1.0
     # The temporary area sits at the midpoint of the two legos (the shared 0.38 was for the old
     # graph paper). Cubes inside it are ignored by their distance from this point, so with 0.38
     # a delivered cube near the red lego was not covered and the robot went for it again.
