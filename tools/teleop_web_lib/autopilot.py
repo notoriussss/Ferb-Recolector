@@ -992,10 +992,15 @@ class AutoPilot:
         """
         Turn away from the area. The side is chosen once, when the avoidance
         starts, and kept: choosing it every tick flips with the bearing noise
-        and the robot never turns.
+        and the robot never turns. A scan already turning in place goes on
+        the same way (the area passes and leaves the view): reversing it
+        swept only the area's sector, and cubes behind were never seen.
         """
         if self.state != STATE_EXPLORE_AVOID:
-            self._avoid_dir = -_side_of(zone.bearing_rad)
+            if self.state == f"{STATE_EXPLORE}{SUFFIX_TURN}":
+                self._avoid_dir = self._search_dir
+            else:
+                self._avoid_dir = -_side_of(zone.bearing_rad)
             # The scan carries on this way: turning back toward the area (the
             # side it delivered on) wobbled in front of it until it gave up.
             self._search_dir = self._avoid_dir

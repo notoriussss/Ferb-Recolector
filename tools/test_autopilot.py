@@ -249,7 +249,8 @@ def test_the_area_paper_is_avoided_like_the_gate_when_no_cube_is_in_view():
     vision.zone = Seen("floor", near_m, bearing_rad=0.3)  # to the left
     command = pilot.step(pilot.cfg.reveal_backup_s + 0.1)
     assert pilot.state == "EXPLORE (avoid gate)"
-    assert command.vy == 0.0 and command.wz == -1.0  # turns right, away
+    # Never toward it; the scan was turning left and goes on that way.
+    assert command.vy == 0.0 and command.wz == 1.0
 
 
 def test_the_avoid_turn_keeps_its_side_when_the_bearing_noise_flips_sign():
@@ -271,6 +272,21 @@ def test_after_avoiding_the_area_the_scan_keeps_turning_away_from_it():
     assert pilot.state == "EXPLORE (avoid gate)" and away < 0
     vision.zone = None  # turned away: the area is out of view
     assert pilot.step(0.1).wz == away
+
+
+def test_a_scan_that_meets_the_area_keeps_turning_the_same_way():
+    pilot, vision = make_pilot()
+    pilot.configure(now=0.0, enabled=True, reset=True)  # roam clock at 0
+    pilot.state = "EXPLORE (turn)"
+    pilot._search_dir = 1.0  # scanning left
+    near_m = pilot.cfg.gate_avoid_distance_m - 0.1
+    # Turning left, the area comes in from the left: reversing here kept
+    # the robot sweeping only that sector, never behind it (11.2026).
+    vision.zone = Seen("floor", near_m, bearing_rad=0.3)
+    assert pilot.step(0.0).wz > 0
+    assert pilot.state == "EXPLORE (avoid gate)"
+    vision.zone = None  # the area left the view on the other side
+    assert pilot.step(0.1).wz > 0
 
 
 def test_a_turn_to_align_is_finished_before_driving_again():
