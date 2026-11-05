@@ -316,12 +316,17 @@ class AutoPilot:
         The operator is driving by hand.
         """
         self.state = STATE_MANUAL
+        self._near_zone = False
+        self._sync_fleet()
 
     def mark_paused(self) -> None:
         """
-        Auto is off and nobody is driving.
+        Auto is off and nobody is driving. The fleet hears it too: a pause
+        in the middle of a delivery must give the turn back.
         """
         self.state = STATE_PAUSED
+        self._near_zone = False
+        self._sync_fleet()
 
     # ---------- main step ----------
     def step(self, now: float, line_black: bool = False) -> DriveCommand:

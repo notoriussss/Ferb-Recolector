@@ -909,6 +909,26 @@ def test_waiting_for_the_turn_never_slides_when_the_paper_flickers_out():
     assert not pilot.carrying  # long enough: the cube is taken as lost
 
 
+def test_pausing_during_the_delivery_gives_the_turn_back():
+    pilot, vision, fleet = make_fleet_pilot(ok=True)
+    vision.zone = Seen("floor", 0.11)
+    pilot.step(0.0)
+    assert pilot.state == "DROP" and fleet.want
+    pilot.mark_paused()
+    assert not fleet.want
+    assert fleet.sent[-1] == ("PAUSED", False, True)
+
+
+def test_driving_by_hand_near_the_area_does_not_keep_asking_for_the_turn():
+    pilot, vision, fleet = make_fleet_pilot()
+    vision.zone = Seen("floor", 0.40)
+    pilot.step(0.0)
+    assert fleet.want
+    pilot.mark_manual()
+    assert not fleet.want
+    assert fleet.sent[-1][0] == "MANUAL"
+
+
 def test_without_a_fleet_it_never_waits():
     pilot, vision = make_pilot()
     pilot.carrying = True
