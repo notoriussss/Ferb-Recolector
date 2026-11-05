@@ -67,7 +67,8 @@ camera:
   # (6.4 cm tall, ratio > max_size_ratio) and the teal area (H < 103) are not taken for cubes;
   # the pink strip (S < 52) is not red. A wrong range makes the robot dodge things that are not
   # cubes: recheck with tools/hsv_tuner.py if the light changes.
-  avoid_colors: [blue, red]
+  # Blue left out (5.11.2026): not a target and not avoided, so it is not even looked for.
+  avoid_colors: [red]
   # A target cube with a cube to avoid this close (m) is skipped: catching it would push both
   # (half the 186 mm chassis + a cube + margin). TODO measure
   # 0.07 (was 0.13, 0.16): yellow cubes 7-13 cm from a blue/red one were left for good. Now the
