@@ -23,6 +23,7 @@ from mobile_base.topics import (
     SERVICE_ZONE_REQUEST,
     TOPIC_BEHAVIOR_STATE,
     TOPIC_FLEET_OK,
+    TOPIC_PERRY_STATE,
     TOPIC_ROBOT_STATE,
     TOPIC_SCOOP_HAS_CUBE,
     TOPIC_ZONE_DELIVERED,
@@ -125,6 +126,13 @@ class FleetLinkNode(Node):
             OCCUPANT_QOS,
         )
 
+        self.create_subscription(
+            RobotState,
+            TOPIC_PERRY_STATE,
+            self._on_perry_state,
+            DEFAULT_QOS_DEPTH,
+        )
+
         self._req_client = self.create_client(
             RequestZone,
             SERVICE_ZONE_REQUEST,
@@ -183,6 +191,13 @@ class FleetLinkNode(Node):
         self._zone.update(occupant=msg.data)
         self._publish_granted()
 
+    def _on_perry_state(self, msg: RobotState):
+        """
+        Perry closed or reopened its gate: while closed, do not ask for the
+        zone (a turn already held is kept and finished).
+        """
+        self._zone.update(gate_closed=bool(msg.gate_closed))
+
     # ---------- periodic publishing ----------
     def _publish_state(self):
         """
@@ -199,9 +214,11 @@ class FleetLinkNode(Node):
 
     def _publish_granted(self):
         """
-        Publish whether we currently hold the delivery zone.
+        Publish whether we currently hold the delivery zone. Without a fresh
+        arbiter heartbeat the lease cannot be trusted, so it reads as lost.
         """
-        self._pub_granted.publish(Bool(data=self._zone.holds))
+        alive = self._hb.ok(now_s(self))
+        self._pub_granted.publish(Bool(data=self._zone.holds and alive))
 
     def _tick_fleet(self):
         """
