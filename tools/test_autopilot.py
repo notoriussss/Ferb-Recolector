@@ -1006,10 +1006,12 @@ def test_with_a_cube_to_avoid_next_to_it_the_catch_lines_up_first():
     near_m = cfg.stop_distance_m - 0.01
     bearing_rad = cfg.catch_precise_align_rad * 1.5  # good enough alone
     vision.det = Seen("yellow", near_m, bearing_rad=bearing_rad)
-    # A blue cube 13 cm to its side: turn the last bit before pushing.
+    # A blue cube 13 cm to its side: slide the last bit before pushing (a
+    # turn would swing the paddles toward it).
     vision.foreign = [Seen("blue", 0.20, bearing_rad=-0.6)]
     command = pilot.step(0.0)
-    assert pilot.state == "ALIGN" and command.wz > 0
+    assert pilot.state == "APPROACH (slide)"
+    assert command.vx < 0 and command.wz == 0  # left, toward the cube
     vision.det = Seen("yellow", near_m, bearing_rad=0.0)
     assert pilot.step(0.1).vy == 1.0 and pilot.state == "CATCH"
 
@@ -1021,3 +1023,67 @@ def test_without_a_cube_to_avoid_near_the_catch_keeps_its_tolerance():
     vision.det = Seen("yellow", cfg.stop_distance_m - 0.01, bearing_rad)
     vision.foreign = [Seen("blue", 0.60, bearing_rad=-0.6)]  # far away
     assert pilot.step(0.0).vy == 1.0 and pilot.state == "CATCH"
+
+
+def test_close_to_a_cube_off_centre_the_robot_slides_instead_of_turning():
+    pilot, vision = make_pilot()
+    vision.det = Seen("yellow", 0.20, bearing_rad=-0.4)
+    command = pilot.step(0.0)
+    assert pilot.state == "APPROACH (slide)"
+    assert command.vx > 0 and command.wz == 0 and command.vy == 0  # right
+
+
+def test_far_from_a_cube_off_centre_the_robot_still_turns():
+    pilot, vision = make_pilot()
+    vision.det = Seen("yellow", 0.60, bearing_rad=-0.4)
+    command = pilot.step(0.0)
+    assert pilot.state == "ALIGN" and command.wz < 0
+
+
+def test_a_cube_to_avoid_just_behind_the_target_blocks_the_catch():
+    pilot, vision = make_pilot()
+    near_m = pilot.cfg.stop_distance_m - 0.01
+    vision.det = Seen("yellow", near_m)
+    # 4 cm behind the yellow one: the push would reach it.
+    vision.foreign = [Seen("red", near_m + 0.04)]
+    command = pilot.step(0.0)
+    assert pilot.state != "CATCH" and command.vy == 0 and command.vx != 0
+
+
+def test_a_cube_to_avoid_well_behind_the_target_lets_the_catch_start():
+    pilot, vision = make_pilot()
+    near_m = pilot.cfg.stop_distance_m - 0.01
+    vision.det = Seen("yellow", near_m)
+    vision.foreign = [Seen("red", near_m + 0.10)]
+    assert pilot.step(0.0).vy > 0 and pilot.state == "CATCH"
+
+
+def test_the_slide_around_a_cube_to_avoid_then_goes_for_the_target():
+    pilot, vision = make_pilot()
+    vision.det = Seen("yellow", 0.30)
+    vision.foreign = [Seen("blue", 0.22, bearing_rad=0.05)]  # in the way
+    command = pilot.step(0.0)
+    assert command.vx != 0 and command.vy == 0  # slides around it
+    vision.foreign = [Seen("blue", 0.25, bearing_rad=0.7)]  # out of the way
+    assert pilot.step(0.1).vy > 0 and pilot.state == "APPROACH"
+
+
+def test_a_line_hit_sliding_sideways_while_carrying_keeps_the_cube():
+    pilot, vision = make_pilot()
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    pilot.note_motion(0.0, DriveCommand(-1.0, 0.0, 0.0, 0.28))  # slide left
+    command = pilot.step(0.1, line_black=True)
+    assert pilot.state == "LINE (stop)" and pilot.carrying
+    pilot.step(0.1 + pilot.cfg.line_stop_s + 0.01, line_black=False)
+    assert pilot.state == "LINE (back up)"
+    assert command == DriveCommand() or command.vy == 0
+
+
+def test_a_line_hit_driving_forward_while_carrying_drops_the_cube():
+    pilot, vision = make_pilot()
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    pilot.note_motion(0.0, DriveCommand(0.0, 1.0, 0.0, 0.36))
+    pilot.step(0.1, line_black=True)
+    assert not pilot.carrying

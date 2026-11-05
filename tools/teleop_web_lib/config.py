@@ -160,6 +160,17 @@ DEFAULT_FOREIGN_MEMORY_S = 3.0
 # with a yellow one. TODO measure
 DEFAULT_CATCH_PRECISE_NEAR_M = 0.25
 DEFAULT_CATCH_PRECISE_ALIGN_RAD = 0.06
+# A cube to avoid less than this (m) behind the target still blocks the
+# catch: the push overshoots a few cm and the paddle tips stick out past the
+# caught cube. TODO measure
+DEFAULT_FOREIGN_BEHIND_MARGIN_M = 0.07
+# ...when within this (m) of the heading: half the 12.5 cm between the
+# paddles plus half a cube. TODO measure
+DEFAULT_FOREIGN_BEHIND_CLEARANCE_M = 0.065
+# Nearer than this (m) to the target, centre on it by sliding sideways
+# (Mecanum) instead of turning: a turn swings the paddles over the floor
+# beside the scoop. TODO measure
+DEFAULT_STRAFE_ALIGN_DISTANCE_M = 0.25
 
 # --- Vision filter used by this tool (section `detection` overrides) ----------
 # Looser than the ROS cube_detector because this tool's camera is not
@@ -263,6 +274,9 @@ class AutoConfig:
     foreign_memory_s: float = DEFAULT_FOREIGN_MEMORY_S
     catch_precise_near_m: float = DEFAULT_CATCH_PRECISE_NEAR_M
     catch_precise_align_rad: float = DEFAULT_CATCH_PRECISE_ALIGN_RAD
+    foreign_behind_margin_m: float = DEFAULT_FOREIGN_BEHIND_MARGIN_M
+    foreign_behind_clearance_m: float = DEFAULT_FOREIGN_BEHIND_CLEARANCE_M
+    strafe_align_distance_m: float = DEFAULT_STRAFE_ALIGN_DISTANCE_M
 
     @classmethod
     def from_dict(cls, values: dict | None) -> "AutoConfig":

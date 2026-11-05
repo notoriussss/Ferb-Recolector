@@ -58,8 +58,16 @@ STATE_EXPLORE_AVOID = "EXPLORE (avoid gate)"
 STATE_EXPLORE_REACQUIRE = "EXPLORE (reacquire)"
 # Backing up before a catch to see again a cube to avoid that left the view.
 STATE_APPROACH_BACKUP = f"{STATE_APPROACH} (back up)"
+# Centring on a close cube by sliding sideways (Mecanum) instead of turning.
+STATE_SLIDE = f"{STATE_APPROACH} (slide)"
 # States in which the robot is going for a cube or pushing it.
-CHASE_STATES = (STATE_APPROACH, STATE_ALIGN, STATE_CATCH, STATE_CATCH_CHECK)
+CHASE_STATES = (
+    STATE_APPROACH,
+    STATE_ALIGN,
+    STATE_SLIDE,
+    STATE_CATCH,
+    STATE_CATCH_CHECK,
+)
 # Prefixes used to recognise a family of states.
 PREFIX_LINE = "LINE"
 PREFIX_DROP = "DROP"
@@ -351,14 +359,27 @@ class AutoPilot:
         if command.vx or command.wz:
             return []
         clearance_m = cfg.foreign_clearance_m
+        behind_clearance_m = cfg.foreign_behind_clearance_m
         if self._dodging:
             clearance_m += cfg.foreign_exit_margin_m
-        return cubes_in_path(
-            self._foreign_near(now),
+            behind_clearance_m += cfg.foreign_exit_margin_m
+        cubes = self._foreign_near(now)
+        goal_m = self._goal_ahead_m(now)
+        # The whole chassis sweeps the floor up to the target; past it only
+        # the scoop goes on, by the push overshoot.
+        in_path = cubes_in_path(
+            cubes,
             clearance_m,
             cfg.foreign_avoid_distance_m,
-            self._goal_ahead_m(now),
+            goal_m,
         )
+        past_target = cubes_in_path(
+            cubes,
+            behind_clearance_m,
+            cfg.foreign_avoid_distance_m,
+            goal_m + cfg.foreign_behind_margin_m,
+        )
+        return in_path + [c for c in past_target if c not in in_path]
 
     def _foreign_near(self, now: float) -> list:
         """
@@ -399,14 +420,14 @@ class AutoPilot:
         """
         cfg = self.cfg
         self._ban_cubes_if_chasing_one(now)
-        self._settle_cube_on_line()
+        self._escape = self._escape_command(now)
+        self._settle_cube_on_line(sideways=self._escape.vx != 0)
         if not self.enabled:
             self._resume_state = STATE_PAUSED
         elif self.carrying:
             self._resume_state = STATE_CARRY
         else:
             self._resume_state = STATE_SEARCH
-        self._escape = self._escape_command(now)
         self.state = STATE_LINE_STOP
         self._line_stop_until = now + cfg.line_stop_s
         self._phase_until = self._line_stop_until + cfg.line_backup_s
@@ -433,15 +454,17 @@ class AutoPilot:
         self._last_seen_s = None
         self._reveal_pending = False
 
-    def _settle_cube_on_line(self) -> None:
+    def _settle_cube_on_line(self, sideways: bool = False) -> None:
         """
         A line hit while carrying: during the delivery push the cube is
-        already in the area (count it); anywhere else it was pushed over
+        already in the area (count it); driving forward it was pushed over
         the border and stays behind, so the robot is no longer carrying.
+        Sliding sideways (around a cube to avoid) the cube stays between the
+        paddles: twice the robot dropped a cube it still had that way.
         """
         if self.state.startswith(PREFIX_DROP):
             self._finish_drop()
-        else:
+        elif not sideways:
             self.carrying = False
 
     def _finish_drop(self) -> None:
@@ -707,8 +730,8 @@ class AutoPilot:
                 self.state = STATE_APPROACH_BACKUP
                 return _backward(cfg.line_speed)
             if not self._aligned_for_catch(now, det):
-                self.state = STATE_ALIGN
-                return _turn(_side_of(det.bearing_rad), cfg.search_turn_speed)
+                self.state = STATE_SLIDE
+                return _strafe(_side_of(det.bearing_rad), cfg.strafe_speed)
             self.state = STATE_CATCH
             self._phase_until = now + cfg.scoop_push_s
             return _forward(cfg.forward_speed)
@@ -1074,18 +1097,29 @@ class AutoPilot:
         label: str,
     ) -> DriveCommand:
         """
-        Turn in place if off-heading; otherwise drive straight forward
-        (star motion: never mix rotation and translation on Mecanum wheels,
-        which causes sideways drift).
+        Turn in place if off-heading (slide sideways instead when close to
+        a cube: a turn swings the paddles over the floor beside the scoop);
+        otherwise drive straight forward (star motion: never mix rotation and
+        translation on Mecanum wheels, which causes sideways drift).
         """
         cfg = self.cfg
         tolerance_rad = cfg.align_tolerance_rad
         if distance <= cfg.close_align_distance_m:
             tolerance_rad *= cfg.close_align_factor
-        if self.state.endswith(SUFFIX_ALIGN) or self.state == STATE_ALIGN:
+        if self.state.endswith(SUFFIX_ALIGN) or self.state in (
+            STATE_ALIGN,
+            STATE_SLIDE,
+        ):
             # Already turning: finish the turn, do not stop at the edge.
             tolerance_rad *= cfg.align_exit_fraction
         if abs(bearing) > tolerance_rad:
+            slide = (
+                label == STATE_APPROACH
+                and distance <= cfg.strafe_align_distance_m
+            )
+            if slide:
+                self.state = STATE_SLIDE
+                return _strafe(_side_of(bearing), cfg.strafe_speed)
             if label == STATE_APPROACH:
                 self.state = STATE_ALIGN
             else:
