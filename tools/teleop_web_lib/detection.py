@@ -194,8 +194,10 @@ class DetectionPipeline:
             self._det = best
             if best is not None:
                 self._det_stamp_s = now
-            self._foreign = foreign
+            # A frame that missed them does not forget them: they flicker,
+            # and one frame without them let the catch push start.
             if foreign:
+                self._foreign = foreign
                 self._foreign_stamp_s = now
             self._zone = zone
             if zone is not None:
