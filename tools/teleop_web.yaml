@@ -469,9 +469,8 @@ auto:
 fleet:
   # Ferb and Perry talk over ROS 2 on the paquidermos hotspot (11.2026). Start the tool with
   # scripts/start_teleop_fleet.sh (ROS 2 + fleet_link); without Perry, Auto waits at the area.
-  # Off while Perry is not running (5.11.2026): Auto delivers without turns. Turn it back on
-  # once Perry is up again.
-  enabled: false
+  # Off while Perry is not running: Auto delivers without turns.
+  enabled: true
   namespace: ferb
   # zone/granted older than this counts as not granted (fleet_link dead or disconnected).
   granted_timeout_s: 2.0
