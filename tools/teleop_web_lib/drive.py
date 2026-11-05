@@ -21,6 +21,7 @@ from teleop_web_lib.autopilot import (
 from teleop_web_lib.config import AutoConfig
 from teleop_web_lib.kinematics import WHEELS, clamp, mecanum_wheel_ratios
 from teleop_web_lib.line_sensor import counts_to_millivolts
+from teleop_web_lib.state_log import StateLog, auto_snapshot
 
 log = logging.getLogger("teleop_web")
 
@@ -72,6 +73,7 @@ class Drive:
         self._cmd = DriveCommand()  # last manual command
         self._stamp = 0.0
         self._error_logged_s = -ERROR_LOG_PERIOD_S
+        self._state_log = StateLog()
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
@@ -188,7 +190,11 @@ class Drive:
             self.line_counts = None
         command = self._next_command(now)
         with self._lock:
-            self._pilot.note_motion(now, command)
+            pilot = self._pilot
+            pilot.note_motion(now, command)
+            line = self._state_log.line(auto_snapshot(pilot), pilot.target_info)
+        if line is not None:
+            log.info(line)
         scale = command.speed * self._max_duty
         # DriveCommand: vy forward, vx strafe right; the kinematics take
         # (forward, left, ccw), so the wheel names in the config are the

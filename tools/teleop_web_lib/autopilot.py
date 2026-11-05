@@ -228,6 +228,8 @@ class AutoPilot:
         self._unreported_color: str | None = None
         # The area is close enough to ask for the turn (set while carrying).
         self._near_zone = False
+        # The last wish for the turn sent to the fleet (for the state log).
+        self.fleet_want = False
         # Side of the slide around the cubes to avoid (None before the
         # first). Kept until _dodge_side_until_s, also across the turns in
         # between, so the robot does not slide back and forth.
@@ -349,6 +351,7 @@ class AutoPilot:
         want = self.state.startswith(PREFIX_DROP) or (
             self.carrying and self._near_zone
         )
+        self.fleet_want = want
         self.fleet.update(self.state, want, self.carrying)
 
     def _decide(self, now: float, line_black: bool) -> DriveCommand:
