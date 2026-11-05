@@ -142,6 +142,10 @@ DEFAULT_DELIVER_SPEED_MIN_S = 0.3
 # zone_request_margin_m / zone_wait_margin_m of collector.yaml. TODO measure
 DEFAULT_ZONE_REQUEST_DISTANCE_M = 0.45
 DEFAULT_ZONE_WAIT_DISTANCE_M = 0.30
+# Keep wanting the turn this long (s) after the area was last seen within
+# zone_request_distance_m: one frame reading the legos 48 cm away dropped the
+# wish and fleet_link gave the turn back before the cube went in (5.11.2026).
+DEFAULT_ZONE_WANT_HOLD_S = 3.0
 # Cubes to avoid (camera.avoid_colors): drive around one that is closer than
 # foreign_avoid_distance_m (m) and within foreign_clearance_m (m) of the
 # straight path (half the 186 mm chassis, a cube and some margin). Once
@@ -307,6 +311,7 @@ class AutoConfig:
     deliver_speed_min_s: float = DEFAULT_DELIVER_SPEED_MIN_S
     zone_request_distance_m: float = DEFAULT_ZONE_REQUEST_DISTANCE_M
     zone_wait_distance_m: float = DEFAULT_ZONE_WAIT_DISTANCE_M
+    zone_want_hold_s: float = DEFAULT_ZONE_WANT_HOLD_S
     foreign_avoid_distance_m: float = DEFAULT_FOREIGN_AVOID_DISTANCE_M
     foreign_clearance_m: float = DEFAULT_FOREIGN_CLEARANCE_M
     foreign_exit_margin_m: float = DEFAULT_FOREIGN_EXIT_MARGIN_M

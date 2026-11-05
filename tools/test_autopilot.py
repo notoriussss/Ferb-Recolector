@@ -829,8 +829,25 @@ def test_asks_for_the_turn_near_the_area_but_keeps_driving():
     assert pilot.step(0.0).vy == 1.0
     assert fleet.want
     vision.zone = Seen("floor", 0.60)
-    pilot.step(0.1)
+    pilot.step(pilot.cfg.zone_want_hold_s + 0.1)
     assert not fleet.want
+
+
+def test_a_turn_is_kept_when_the_area_distance_flickers():
+    pilot, vision, fleet = make_fleet_pilot(ok=True)
+    vision.zone = Seen("green", 0.14)  # granted, lining up with the legos
+    pilot.step(0.0)
+    assert fleet.want
+    # 5.11.2026: one frame read the legos at 48 cm, the wish dropped and
+    # fleet_link gave the turn back before the cube was delivered.
+    vision.zone = Seen("green", 0.48)
+    pilot.step(0.1)
+    assert fleet.want
+    vision.zone = None
+    pilot.step(0.2)
+    assert fleet.want
+    pilot.step(pilot.cfg.zone_want_hold_s + 0.1)
+    assert not fleet.want  # really gone: let go of it
 
 
 def test_waits_outside_the_area_until_the_turn_is_granted():

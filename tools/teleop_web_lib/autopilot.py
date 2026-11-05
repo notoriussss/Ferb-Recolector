@@ -238,8 +238,10 @@ class AutoPilot:
         self._cube_color = ""
         # Colour of a counted delivery not yet reported to the fleet.
         self._unreported_color: str | None = None
-        # The area is close enough to ask for the turn (set while carrying).
+        # The area is close enough to ask for the turn (set while carrying),
+        # and when it last was: the wish is kept zone_want_hold_s past it.
         self._near_zone = False
+        self._near_zone_s = -math.inf
         # The last wish for the turn sent to the fleet (for the state log).
         self.fleet_want = False
         # Side of the slide around the cubes to avoid (None before the
@@ -338,6 +340,7 @@ class AutoPilot:
         """
         self.state = STATE_MANUAL
         self._near_zone = False
+        self._near_zone_s = -math.inf
         self._sync_fleet()
 
     def mark_paused(self) -> None:
@@ -347,6 +350,7 @@ class AutoPilot:
         """
         self.state = STATE_PAUSED
         self._near_zone = False
+        self._near_zone_s = -math.inf
         self._sync_fleet()
 
     # ---------- main step ----------
@@ -356,7 +360,9 @@ class AutoPilot:
         """
         self._near_zone = False
         command = self._guard_peer(now, self._decide(now, line_black))
-        self._sync_fleet()
+        if self._near_zone:
+            self._near_zone_s = now
+        self._sync_fleet(now)
         return command
 
     def _guard_peer(self, now: float, command: DriveCommand) -> DriveCommand:
@@ -375,16 +381,21 @@ class AutoPilot:
             self.target_info = f"peer: {reason}"
         return command
 
-    def _sync_fleet(self) -> None:
+    def _sync_fleet(self, now: float | None = None) -> None:
         """
         Tell the fleet what we want. The turn is asked for while carrying
-        close to the area and kept through the push and the back up, so the
-        other robot and the arm stay out until we are clear.
+        close to the area (and zone_want_hold_s past the last time it was:
+        its distance flickers) and kept through the push and the back up, so
+        the other robot and the arm stay out until we are clear.
         """
         if self.fleet is None:
             return
+        recently_near = (
+            now is not None
+            and now - self._near_zone_s <= self.cfg.zone_want_hold_s
+        )
         want = self.state.startswith(PREFIX_DROP) or (
-            self.carrying and self._near_zone
+            self.carrying and (self._near_zone or recently_near)
         )
         self.fleet_want = want
         self.fleet.update(self.state, want, self.carrying)

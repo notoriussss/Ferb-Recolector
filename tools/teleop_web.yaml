@@ -423,6 +423,10 @@ auto:
   # collector.yaml. TODO measure
   zone_request_distance_m: 0.45
   zone_wait_distance_m: 0.30
+  # Keep wanting the turn this long (s) after the area was last seen within
+  # zone_request_distance_m: one frame reading the legos at 48 cm dropped the wish and the turn was
+  # given back before the cube went in, five times in a row (5.11.2026). TODO measure
+  zone_want_hold_s: 3.0
   # Cubes of camera.avoid_colors: slide around one closer than foreign_avoid_distance_m (m) that
   # is within foreign_clearance_m (m) of the straight path (half the 186 mm chassis + a cube +
   # margin), until it is foreign_exit_margin_m (m) farther out. The side is the one with the
