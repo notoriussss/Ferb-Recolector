@@ -10,12 +10,14 @@
 /**/cube_detector:
   ros__parameters:
     color_names: [yellow]
+    # red and blue widened on the robot camera (11.2026): the cubes at 21 cm read red H 171-176,
+    # S from 109, and blue H from 101 (were S 110 and H 103). The table stays out of both.
     hsv:
-      red:    [0, 110, 80, 8, 255, 255, 165, 110, 80, 179, 255, 255]
+      red:    [0, 95, 80, 8, 255, 255, 165, 95, 80, 179, 255, 255]
       orange: [8, 120, 100, 18, 255, 255]
       yellow: [20, 80, 100, 36, 255, 255]
       green:  [45, 80, 50, 92, 255, 255]
-      blue:   [103, 120, 70, 128, 255, 255]
+      blue:   [99, 120, 70, 128, 255, 255]
       purple: [145, 60, 40, 171, 255, 255]
 
     # Camera geometry calibrated on the real robot (the bottom row v=479 is at ~16.5 cm,
