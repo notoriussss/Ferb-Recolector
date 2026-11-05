@@ -330,7 +330,10 @@ auto:
   reveal_backup_s: 0.6
   # Back up to uncover a lost cube only if it was last seen this close (m): a
   # far cube that flickers out of view is not hidden under the scoop.
-  reveal_max_distance_m: 0.35
+  # 0.25 (was 0.35): the yellow pot behind the green lego flickered in and out at 32-36 cm and
+  # the robot drove at it and backed up 12 times in 30 s; real cubes that went under the scoop
+  # were last seen at 14-22 cm (5.11.2026).
+  reveal_max_distance_m: 0.25
   # After losing sight of a cube, keep heading where it was last seen for this
   # long before going back to roaming. TODO measure
   reacquire_s: 1.5
