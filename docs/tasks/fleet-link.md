@@ -75,9 +75,11 @@ Their contract (read these files in their repo before starting):
      scoop has no gate). Also publishes `fleet/ok` (Bool, true while the heartbeat is fresh, at
      5 Hz) and `zone/granted` (Bool).
    - Calls `/zone/request` and `/zone/release` **asynchronously** and never blocks the executor.
-     If a service is missing, it logs a warning at most once every 5 s.
-   - Parameters: `robot_name` (ferb), `heartbeat_timeout_s` (2.0), `state_rate_hz`, and
-     `renew_period_s` (20.0).
+     If a service is missing, it logs a warning at most once every 5 s. A call with no answer after
+     `call_timeout_s` is dropped and sent again (a release keeps its delivered colour): one lost
+     answer left Ferb waiting at the area for good.
+   - Parameters: `robot_name` (ferb), `heartbeat_timeout_s` (2.0), `state_rate_hz`,
+     `renew_period_s` (20.0) and `call_timeout_s` (3.0).
    - Add it to `collector.launch.py`.
 
 5. **`obstacle_guard`.**

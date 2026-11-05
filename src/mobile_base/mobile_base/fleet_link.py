@@ -13,6 +13,7 @@ from mobile_base.fleet import (
     FleetLinkParams,
     Heartbeat,
     ZoneClient,
+    call_expired,
     to_fleet_state,
 )
 from mobile_base.states import State
@@ -70,6 +71,11 @@ class FleetLinkNode(Node):
         self._delivered_total = 0
         self._req_future = None
         self._rel_future = None
+        # When the call in flight was sent (None: none), and the delivery the
+        # release in flight carries, to send it again if it gets no answer.
+        self._req_sent_s: float | None = None
+        self._rel_sent_s: float | None = None
+        self._rel_sent = (False, "")
 
         self._create_interfaces()
         self.create_timer(1.0 / params.state_rate_hz, self._publish_state)
@@ -238,12 +244,40 @@ class FleetLinkNode(Node):
         Send a release or a request to the arbiter when one is due and no
         call of that kind is already in flight.
         """
+        self._drop_unanswered_calls()
         if self._zone.should_release() and self._rel_future is None:
             self._send_release()
         elif (
             self._zone.should_request(now_s(self)) and self._req_future is None
         ):
             self._send_request()
+
+    def _drop_unanswered_calls(self):
+        """
+        Forget a request or release with no answer after call_timeout_s, so
+        it is sent again: one lost answer left Ferb waiting at the area for
+        good. A late answer to a dropped call is ignored.
+        """
+        now = now_s(self)
+        timeout_s = float(self._param("call_timeout_s"))
+        if call_expired(self._req_sent_s, now, timeout_s):
+            self._warn_no_answer(SERVICE_ZONE_REQUEST)
+            self._req_client.remove_pending_request(self._req_future)
+            self._req_future, self._req_sent_s = None, None
+        if call_expired(self._rel_sent_s, now, timeout_s):
+            self._warn_no_answer(SERVICE_ZONE_RELEASE)
+            self._rel_client.remove_pending_request(self._rel_future)
+            self._rel_future, self._rel_sent_s = None, None
+            self._zone.restore_release(*self._rel_sent)
+
+    def _warn_no_answer(self, service: str):
+        """
+        Log (throttled) that a zone call got no answer in time.
+        """
+        self.get_logger().warning(
+            f"{service}: no answer, sending it again",
+            throttle_duration_sec=SERVICE_WARN_THROTTLE_S,
+        )
 
     def _send_release(self):
         """
@@ -257,6 +291,8 @@ class FleetLinkNode(Node):
         req.robot = self._zone.robot
         req.delivered = delivered
         req.color = color
+        self._rel_sent = (delivered, color)
+        self._rel_sent_s = now_s(self)
         self._rel_future = self._rel_client.call_async(req)
         self._rel_future.add_done_callback(self._on_release_done)
 
@@ -270,6 +306,7 @@ class FleetLinkNode(Node):
         self._zone.note_requested(now_s(self))
         req = RequestZone.Request()
         req.robot = self._zone.robot
+        self._req_sent_s = now_s(self)
         self._req_future = self._req_client.call_async(req)
         self._req_future.add_done_callback(self._on_request_done)
 
@@ -286,7 +323,9 @@ class FleetLinkNode(Node):
         """
         Handle the arbiter's answer to a zone request.
         """
-        self._req_future = None
+        if future is not self._req_future:
+            return  # dropped for taking too long
+        self._req_future, self._req_sent_s = None, None
         try:
             res = future.result()
         except Exception as exc:
@@ -302,7 +341,9 @@ class FleetLinkNode(Node):
         """
         Handle the arbiter's answer to a zone release.
         """
-        self._rel_future = None
+        if future is not self._rel_future:
+            return  # dropped for taking too long
+        self._rel_future, self._rel_sent_s = None, None
         try:
             res = future.result()
         except Exception as exc:

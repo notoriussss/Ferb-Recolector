@@ -3,7 +3,12 @@ Tests for the pure-logic fleet module: state mapping, heartbeat and zone
 client.
 """
 
-from mobile_base.fleet import Heartbeat, ZoneClient, to_fleet_state
+from mobile_base.fleet import (
+    Heartbeat,
+    ZoneClient,
+    call_expired,
+    to_fleet_state,
+)
 from mobile_base.states import FleetState, State
 
 
@@ -77,3 +82,21 @@ def test_zone_client_keeps_renewing_a_held_turn_when_gate_closes():
     zc.note_requested(0.0)
     zc.update(gate_closed=True)
     assert zc.holds and zc.should_request(20.0)
+
+
+def test_a_zone_call_without_answer_expires():
+    assert not call_expired(None, 100.0, 3.0)  # nothing in flight
+    assert not call_expired(10.0, 12.9, 3.0)
+    assert call_expired(10.0, 13.0, 3.0)
+
+
+def test_a_release_without_answer_is_sent_again_with_the_delivery():
+    zc = ZoneClient(robot="ferb", renew_period_s=20.0)
+    zc.update(want=True, occupant="ferb")
+    zc.mark_delivered("yellow")
+    zc.update(want=False)
+    sent = zc.pop_release()
+    assert sent == (True, "yellow")
+    zc.restore_release(*sent)  # the arbiter never answered
+    assert zc.should_release()
+    assert zc.pop_release() == (True, "yellow")
