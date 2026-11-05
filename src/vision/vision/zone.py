@@ -22,6 +22,7 @@ import numpy as np
 
 from vision.camera_model import CameraModel
 from vision.color_detection import (
+    LANDMARK_HEIGHT_M,
     LEFT_LANDMARK_AIM_HEIGHTS,
     REGION_FLOOR,
     RIGHT_LANDMARK_AIM_HEIGHTS,
@@ -40,6 +41,12 @@ DEFAULT_FLOOR_COLORS = ("blue", "green")
 DEFAULT_LANDMARK_MIN_AREA_PX = 200
 # Landmarks are upright: height at least this times the width.
 DEFAULT_LANDMARK_MIN_HEIGHT_RATIO = 1.2
+# A landmark blob must be at least this fraction of the height a 6.4 cm
+# landmark has at the distance of its base. 0 = off. Taller than wide was not
+# enough: a red cube (its top and front in view, stretched by motion blur)
+# passed for the red landmark and the robot carried cubes toward it
+# (5.11.2026). Measured: red cubes 0.10-0.41, the landmark 1.07-1.79.
+DEFAULT_LANDMARK_MIN_HEIGHT_FRACTION = 0.0
 # Smallest area paper blob (TODO measure on the track).
 DEFAULT_FLOOR_MIN_AREA_PX = 1500
 # Paper on the floor looks at least this many times wider than tall.
@@ -119,6 +126,7 @@ class ZoneParams:
     )
     landmark_min_area_px: int = DEFAULT_LANDMARK_MIN_AREA_PX
     landmark_min_height_ratio: float = DEFAULT_LANDMARK_MIN_HEIGHT_RATIO
+    landmark_min_height_fraction: float = DEFAULT_LANDMARK_MIN_HEIGHT_FRACTION
     floor_min_area_px: int = DEFAULT_FLOOR_MIN_AREA_PX
     floor_min_flatness: float = DEFAULT_FLOOR_MIN_FLATNESS
     ignore_margin_px: int = DEFAULT_IGNORE_MARGIN_PX
@@ -355,6 +363,11 @@ class ZoneLocator:
             return None
         p = self.params
         left_color, right_color = p.landmark_colors
+        accept = (
+            self._tall_as_a_landmark
+            if p.landmark_min_height_fraction > 0
+            else None
+        )
         left, right = (
             self._on_the_floor(
                 self._landmarks.find_marker(
@@ -362,6 +375,7 @@ class ZoneLocator:
                     color,
                     p.landmark_min_area_px,
                     p.landmark_min_height_ratio,
+                    accept,
                 )
             )
             for color in (left_color, right_color)
@@ -373,6 +387,19 @@ class ZoneLocator:
             p.left_aim_heights,
             p.right_aim_heights,
         )
+
+    def _tall_as_a_landmark(self, bbox: tuple[int, int, int, int]) -> bool:
+        """
+        True when a blob with this bounding box is as tall as a landmark
+        standing where its base is (landmark_min_height_fraction of it): a
+        3 cm cube there is about a third of that.
+        """
+        x, y, w, h = bbox
+        ground = self._camera.bearing_distance(x + w // 2, y + h - 1)
+        if ground is None:
+            return True  # base above the horizon: _on_the_floor decides
+        expected_px = self._camera.focal_px * LANDMARK_HEIGHT_M / ground[1]
+        return h >= self.params.landmark_min_height_fraction * expected_px
 
     def _on_the_floor(self, marker: Marker | None) -> Marker | None:
         """

@@ -226,11 +226,12 @@ class ColorDetector:
         color: str,
         min_area_px: int,
         min_height_ratio: float,
+        accept=None,
     ) -> Marker | None:
         """
         The largest upright blob of `color` (taller than wide by at least
         `min_height_ratio`), so a cube of the same colour is not mistaken for
-        a landmark.
+        a landmark. `accept`, when given, also has to pass its bounding box.
         """
         hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
         best: Marker | None = None
@@ -240,6 +241,8 @@ class ColorDetector:
                 continue
             x, y, w, h = cv2.boundingRect(contour)
             if h < min_height_ratio * w:
+                continue
+            if accept is not None and not accept((x, y, w, h)):
                 continue
             if best is None or area > best.area_px:
                 best = Marker(

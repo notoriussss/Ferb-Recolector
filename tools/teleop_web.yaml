@@ -169,6 +169,11 @@ camera:
     # TODO measure
     beside_row_margin_px: 12
     beside_width_factor: 1.0
+    # A landmark must be at least this fraction of the height a 6.4 cm one has at the distance of
+    # its base: a red cube on the track (taller than wide in the image) passed for the red landmark
+    # and the robot carried cubes toward it (5.11.2026). Measured on that run: red cubes 0.10-0.41,
+    # the landmark 1.07-1.79. TODO measure
+    landmark_min_height_fraction: 0.6
     # The temporary area sits at the midpoint of the two legos (the shared 0.38 was for the old
     # graph paper). Cubes inside it are ignored by their distance from this point, so with 0.38
     # a delivered cube near the red lego was not covered and the robot went for it again.

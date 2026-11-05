@@ -401,3 +401,31 @@ def test_a_target_level_with_the_area_and_beside_it_is_off_the_arena():
     kept = without_cubes_beside_zone(cubes, gate, 12, width_factor=1.0)
     assert kept == [in_front, far_side]
     assert without_cubes_beside_zone(cubes, None, 12) == cubes
+
+
+def landmark_height_px(u, v):
+    """
+    How tall (px) a 6.4 cm landmark standing at image point (u, v) looks.
+    """
+    distance_m = CAM.bearing_distance(u, v)[1]
+    return round(CAM.focal_px * 0.064 / distance_m)
+
+
+def test_a_red_cube_is_not_taken_for_the_red_landmark():
+    # 5.11.2026: a red cube on the track read as the red landmark (its blob
+    # was a bit taller than wide) and the robot carried cubes toward it.
+    lego_h = landmark_height_px(470, 200)
+    cube_h = round(0.35 * landmark_height_px(300, 330))
+    lego = blank()
+    paint_hsv(lego, 460, 200 - lego_h, 20, lego_h, RED)
+    cube = blank()
+    paint_hsv(cube, 290, 330 - cube_h, cube_h * 2 // 3, cube_h, RED)
+    both = cube.copy()
+    paint_hsv(both, 460, 200 - lego_h, 20, lego_h, RED)
+    off = ZoneParams()
+    on = ZoneParams(landmark_min_height_fraction=0.6)
+    assert ZoneLocator(RANGES, CAM, off).locate(cube) is not None  # old way
+    assert ZoneLocator(RANGES, CAM, on).locate(cube) is None
+    assert ZoneLocator(RANGES, CAM, on).locate(lego) is not None
+    zone = ZoneLocator(RANGES, CAM, on).locate(both)
+    assert zone is not None and zone.bbox[0] >= 400  # the lego, not the cube
