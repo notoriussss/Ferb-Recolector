@@ -1001,6 +1001,55 @@ def test_a_line_hit_during_the_push_still_reports_the_delivery():
     assert fleet.delivered_colors == ["yellow"]
 
 
+def waiting_by_the_legos(pilot, vision):
+    """
+    Carrying, waiting for the turn in front of the legos (not the paper).
+    """
+    vision.zone = Seen("green", 0.25, bearing_rad=0.1)
+    assert pilot.step(0.0).speed == 0.0
+    assert pilot.state == "CARRY (wait zone)"
+
+
+def test_waiting_stays_put_when_the_landmarks_flicker_out():
+    pilot, vision, fleet = make_fleet_pilot()
+    waiting_by_the_legos(pilot, vision)
+    # 5.11.2026: losing the legos sent the robot turning to look for them,
+    # and it hit the line and left the cube behind (17:51:27).
+    vision.zone = None
+    for step in range(1, 30):
+        assert pilot.step(step * 0.1).speed == 0.0
+        assert pilot.state == "CARRY (wait zone)" and fleet.want
+
+
+def test_waiting_does_not_creep_on_when_the_area_reads_farther():
+    pilot, vision, fleet = make_fleet_pilot()
+    waiting_by_the_legos(pilot, vision)
+    # One frame read the legos far away: the robot drove on toward the area
+    # without the turn (17:50:23).
+    vision.zone = Seen("green", 0.90, bearing_rad=0.1)
+    assert pilot.step(0.1).speed == 0.0
+    assert pilot.state == "CARRY (wait zone)" and fleet.want
+
+
+def test_a_granted_turn_ends_the_wait_even_without_the_area_in_view():
+    pilot, vision, fleet = make_fleet_pilot()
+    waiting_by_the_legos(pilot, vision)
+    vision.zone = None
+    pilot.step(0.1)
+    fleet.ok = True
+    command = pilot.step(0.2)
+    assert pilot.state != "CARRY (wait zone)"
+    assert command.speed > 0 and command.wz > 0  # toward where it was (left)
+
+
+def test_waiting_gives_up_once_the_area_is_gone_for_good():
+    pilot, vision, fleet = make_fleet_pilot()
+    waiting_by_the_legos(pilot, vision)
+    vision.zone = None
+    pilot.step(pilot.cfg.carry_zone_timeout_s + 0.5)
+    assert pilot.state != "CARRY (wait zone)"
+
+
 def test_waiting_for_the_turn_never_slides_when_the_paper_flickers_out():
     pilot, vision, fleet = make_fleet_pilot()
     cfg = pilot.cfg

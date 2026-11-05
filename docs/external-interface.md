@@ -57,6 +57,9 @@ Proposed by Ferb (5.11.2026) after the two collectors collided at the area and b
 - **Wait outside**: without the turn, wait still at 0.55 m or more, not at the entry.
 - **Leave, then release**: after delivering, keep the turn until the robot is out of the exclusion zone (0.55 m), 5 s at most, and only then call `/zone/release`.
 - **Perry first**: with `occupant = perry` (scanning or sorting), nobody enters.
+- **Stable wait** (from Phineas): once waiting, do not leave the wait because the landmarks flicker out or read farther for a moment; only a granted turn or a long loss of the area (`carry_zone_timeout_s`) ends it. Turning to look for them during the wait hit the line and lost the cube.
+- **The turn ends the wait** (from Phineas): a granted turn starts the delivery even if the landmarks are not in view in that frame.
+- **Hold the wish** (`zone_want_hold_s` = 3 s): keep asking for the turn 3 s past the last time the area was near, so one flickering frame does not give the turn back.
 
 In Ferb: `auto.zone_request_distance_m`, `zone_wait_distance_m`, `zone_exclusion_m` and `zone_leave_max_s` in `tools/teleop_web.yaml`; the logic is in `tools/teleop_web_lib/autopilot.py` (`_must_avoid`, `_end_drop`, `_check_left_zone`) and `fleet.py` (`zone_busy`, from `/zone/occupant`).
 

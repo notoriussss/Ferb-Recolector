@@ -251,6 +251,10 @@ class AutoPilot:
         # exclusion zone (or until this time): the next one must not come in
         # while we are still at the entry.
         self._leaving_until_s = -math.inf
+        # When the area was last seen within zone_request_distance_m while
+        # waiting for the turn: the wait holds until carry_zone_timeout_s
+        # past it, whatever the landmarks do in between.
+        self._wait_seen_s = -math.inf
         # The last wish for the turn sent to the fleet (for the state log).
         self.fleet_want = False
         # Side of the slide around the cubes to avoid (None before the
@@ -1092,6 +1096,9 @@ class AutoPilot:
         """
         cfg = self.cfg
         zone = self._zone_in_view(now)
+        held = self._hold_wait(now, zone)
+        if held is not None:
+            return held
         committed = self.state in COMMITTED_CARRY_STATES
         paper = zone is not None and zone.color == ZONE_SOURCE_FLOOR
         if paper:
@@ -1114,6 +1121,7 @@ class AutoPilot:
         self._search_dir = _side_of(zone.bearing_rad)
         if self._must_wait_for_turn(zone):
             self.state = STATE_CARRY_WAIT_ZONE
+            self._wait_seen_s = now
             return STOP
         # The landmarks only lead there (slowing down near them): the push
         # starts once the paper is in view, from in front of the entry line.
@@ -1134,6 +1142,27 @@ class AutoPilot:
             stop_distance_m,
             STATE_CARRY,
         )
+
+    def _hold_wait(self, now: float, zone) -> DriveCommand | None:
+        """
+        Waiting for the turn: stay put while it is not granted, even with
+        the landmarks out of view or read far away for a moment (turning to
+        look for them hit the line and lost the cube; a far reading drove on
+        without the turn). Past carry_zone_timeout_s without the area near,
+        or once granted, None: the normal carry step goes on (with the turn
+        it heads for the area even if it is not in view this frame).
+        """
+        if self.state != STATE_CARRY_WAIT_ZONE or self.fleet is None:
+            return None
+        if self.fleet.granted():
+            return None
+        cfg = self.cfg
+        if zone is not None and zone.distance_m <= cfg.zone_request_distance_m:
+            self._wait_seen_s = now
+        if now - self._wait_seen_s >= cfg.carry_zone_timeout_s:
+            return None
+        self._near_zone = True  # keep asking for the turn
+        return STOP
 
     def _paper_lost_step(self, now: float) -> DriveCommand | None:
         """
