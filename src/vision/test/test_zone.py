@@ -429,3 +429,21 @@ def test_a_red_cube_is_not_taken_for_the_red_landmark():
     assert ZoneLocator(RANGES, CAM, on).locate(lego) is not None
     zone = ZoneLocator(RANGES, CAM, on).locate(both)
     assert zone is not None and zone.bbox[0] >= 400  # the lego, not the cube
+
+
+def test_a_big_red_blob_behind_the_table_is_not_the_red_landmark():
+    # 5.11.2026: a red brick wall and clothes behind the table, 3-88 times a
+    # landmark's height, read as the red landmark 15 cm away: the robot drove
+    # to the table's edge and pushed its cube off the track.
+    lego_h = landmark_height_px(470, 200)
+    wall = blank()
+    paint_hsv(wall, 540, 10, 60, 190, RED)  # base on row 200, very tall
+    lego = blank()
+    paint_hsv(lego, 460, 200 - lego_h, 20, lego_h, RED)
+    on = ZoneParams(
+        landmark_min_height_fraction=0.6,
+        landmark_max_height_fraction=2.5,
+    )
+    assert ZoneLocator(RANGES, CAM, ZoneParams()).locate(wall) is not None
+    assert ZoneLocator(RANGES, CAM, on).locate(wall) is None
+    assert ZoneLocator(RANGES, CAM, on).locate(lego) is not None

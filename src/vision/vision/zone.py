@@ -47,6 +47,10 @@ DEFAULT_LANDMARK_MIN_HEIGHT_RATIO = 1.2
 # passed for the red landmark and the robot carried cubes toward it
 # (5.11.2026). Measured: red cubes 0.10-0.41, the landmark 1.07-1.79.
 DEFAULT_LANDMARK_MIN_HEIGHT_FRACTION = 0.0
+# And at most this fraction of it. 0 = off. A red brick wall and clothes
+# behind the table (3-88 times a landmark) read as the red landmark 15 cm away
+# and the robot pushed its cube off the table's edge (5.11.2026).
+DEFAULT_LANDMARK_MAX_HEIGHT_FRACTION = 0.0
 # Smallest area paper blob (TODO measure on the track).
 DEFAULT_FLOOR_MIN_AREA_PX = 1500
 # Paper on the floor looks at least this many times wider than tall.
@@ -127,6 +131,7 @@ class ZoneParams:
     landmark_min_area_px: int = DEFAULT_LANDMARK_MIN_AREA_PX
     landmark_min_height_ratio: float = DEFAULT_LANDMARK_MIN_HEIGHT_RATIO
     landmark_min_height_fraction: float = DEFAULT_LANDMARK_MIN_HEIGHT_FRACTION
+    landmark_max_height_fraction: float = DEFAULT_LANDMARK_MAX_HEIGHT_FRACTION
     floor_min_area_px: int = DEFAULT_FLOOR_MIN_AREA_PX
     floor_min_flatness: float = DEFAULT_FLOOR_MIN_FLATNESS
     ignore_margin_px: int = DEFAULT_IGNORE_MARGIN_PX
@@ -364,8 +369,9 @@ class ZoneLocator:
         p = self.params
         left_color, right_color = p.landmark_colors
         accept = (
-            self._tall_as_a_landmark
+            self._sized_as_a_landmark
             if p.landmark_min_height_fraction > 0
+            or p.landmark_max_height_fraction > 0
             else None
         )
         left, right = (
@@ -388,18 +394,24 @@ class ZoneLocator:
             p.right_aim_heights,
         )
 
-    def _tall_as_a_landmark(self, bbox: tuple[int, int, int, int]) -> bool:
+    def _sized_as_a_landmark(self, bbox: tuple[int, int, int, int]) -> bool:
         """
-        True when a blob with this bounding box is as tall as a landmark
-        standing where its base is (landmark_min_height_fraction of it): a
-        3 cm cube there is about a third of that.
+        True when a blob with this bounding box is about as tall as a
+        landmark standing where its base is: at least
+        landmark_min_height_fraction of it (a 3 cm cube there is about a
+        third) and, when set, at most landmark_max_height_fraction (a wall
+        behind the table is many times more).
         """
+        p = self.params
         x, y, w, h = bbox
         ground = self._camera.bearing_distance(x + w // 2, y + h - 1)
         if ground is None:
             return True  # base above the horizon: _on_the_floor decides
         expected_px = self._camera.focal_px * LANDMARK_HEIGHT_M / ground[1]
-        return h >= self.params.landmark_min_height_fraction * expected_px
+        if h < p.landmark_min_height_fraction * expected_px:
+            return False
+        max_fraction = p.landmark_max_height_fraction
+        return max_fraction <= 0 or h <= max_fraction * expected_px
 
     def _on_the_floor(self, marker: Marker | None) -> Marker | None:
         """
