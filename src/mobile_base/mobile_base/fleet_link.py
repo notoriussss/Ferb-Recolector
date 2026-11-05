@@ -79,6 +79,8 @@ class FleetLinkNode(Node):
         self._rel_sent = (False, "")
         # When zone/want was last heard (None: never).
         self._want_s: float | None = None
+        # Last (granted, holder) answer logged, to log only the changes.
+        self._last_answer: tuple[bool, str] | None = None
 
         self._create_interfaces()
         self.create_timer(1.0 / params.state_rate_hz, self._publish_state)
@@ -198,6 +200,10 @@ class FleetLinkNode(Node):
         The arbiter announced the zone occupant; this is also its heartbeat.
         """
         self._hb.beat(now_s(self))
+        if msg.data != self._zone.occupant:
+            self.get_logger().info(
+                f"zone occupant: {msg.data!r} (was {self._zone.occupant!r})"
+            )
         self._zone.update(occupant=msg.data)
         self._publish_granted()
 
@@ -349,11 +355,22 @@ class FleetLinkNode(Node):
         except Exception as exc:
             self._warn_call_failed(SERVICE_ZONE_REQUEST, exc)
             return
+        self._log_answer(bool(res.granted), str(res.holder))
         if res.granted:
             self._zone.update(occupant=self._zone.robot)
         elif res.holder:
             self._zone.update(occupant=res.holder)
         self._publish_granted()
+
+    def _log_answer(self, granted: bool, holder: str):
+        """
+        Log the arbiter's answer to a request when it differs from the last.
+        """
+        if (granted, holder) == self._last_answer:
+            return
+        self._last_answer = (granted, holder)
+        verdict = "granted" if granted else "denied"
+        self.get_logger().info(f"zone request {verdict}, holder {holder!r}")
 
     def _on_release_done(self, future):
         """
@@ -367,6 +384,12 @@ class FleetLinkNode(Node):
         except Exception as exc:
             self._warn_call_failed(SERVICE_ZONE_RELEASE, exc)
             return
+        delivered, color = self._rel_sent
+        self.get_logger().info(
+            f"zone released (ok={res.ok}, delivered={delivered}, "
+            f"color={color!r}, total={res.delivered_total})"
+        )
+        self._last_answer = None
         self._delivered_total = int(res.delivered_total)
         if res.ok and self._zone.holds:
             self._zone.update(occupant="")

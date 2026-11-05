@@ -12,12 +12,18 @@ pkill -f 'python3.*[t]eleop_web.py'
 pkill -f '[f]leet_link'
 sleep 1
 
+# Logs are appended (a restart used to wipe the run being looked into); each
+# start is marked with its time.
+for f in /tmp/fleet_link.log /tmp/teleop_web.log; do
+    echo "===== start $(date '+%F %T') =====" >> "$f"
+done
+
 cfg=$(ros2 pkg prefix mobile_base)/share/mobile_base/config/collector.yaml
 nohup ros2 run mobile_base fleet_link --ros-args -r __ns:=/ferb \
     --params-file "$cfg" -p robot_name:=ferb -p want_timeout_s:=3.0 \
-    > /tmp/fleet_link.log 2>&1 < /dev/null &
+    >> /tmp/fleet_link.log 2>&1 < /dev/null &
 disown
 
 cd "$REPO"
-nohup python3 tools/teleop_web.py > /tmp/teleop_web.log 2>&1 < /dev/null &
+nohup python3 tools/teleop_web.py >> /tmp/teleop_web.log 2>&1 < /dev/null &
 disown
