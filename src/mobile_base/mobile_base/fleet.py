@@ -18,6 +18,10 @@ DEFAULT_RENEW_PERIOD_S = 20.0
 # A zone request/release with no answer after this long (s) is dropped and
 # sent again: one lost answer left Ferb waiting at the area for good.
 DEFAULT_CALL_TIMEOUT_S = 3.0
+# A zone/want true not heard again for this long (s) counts as false, so a
+# dead sender does not keep the turn. 0 = off: behavior_fsm publishes zone/want
+# only when it changes; the browser tool repeats it every second.
+DEFAULT_WANT_TIMEOUT_S = 0.0
 
 # Local behaviour state -> shared multi-robot state. Anything not listed
 # (PAUSED, MANUAL, NO_CAMERA, unknown) maps to FleetState.STOP.
@@ -54,6 +58,7 @@ class FleetLinkParams:
     state_rate_hz: float = DEFAULT_STATE_RATE_HZ
     renew_period_s: float = DEFAULT_RENEW_PERIOD_S
     call_timeout_s: float = DEFAULT_CALL_TIMEOUT_S
+    want_timeout_s: float = DEFAULT_WANT_TIMEOUT_S
 
 
 def call_expired(sent_s: float | None, now: float, timeout_s: float) -> bool:
@@ -62,6 +67,21 @@ def call_expired(sent_s: float | None, now: float, timeout_s: float) -> bool:
     `timeout_s` or more for its answer.
     """
     return sent_s is not None and now - sent_s >= timeout_s
+
+
+def want_expired(
+    want: bool,
+    heard_s: float | None,
+    now: float,
+    timeout_s: float,
+) -> bool:
+    """
+    True when a wish for the zone, last heard at `heard_s`, has not been
+    repeated for `timeout_s` (0 = never expires).
+    """
+    if timeout_s <= 0 or not want or heard_s is None:
+        return False
+    return now - heard_s >= timeout_s
 
 
 class Heartbeat:

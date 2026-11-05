@@ -14,7 +14,7 @@ sleep 1
 
 cfg=$(ros2 pkg prefix mobile_base)/share/mobile_base/config/collector.yaml
 nohup ros2 run mobile_base fleet_link --ros-args -r __ns:=/ferb \
-    -p robot_name:=ferb --params-file "$cfg" \
+    --params-file "$cfg" -p robot_name:=ferb -p want_timeout_s:=3.0 \
     > /tmp/fleet_link.log 2>&1 < /dev/null &
 disown
 

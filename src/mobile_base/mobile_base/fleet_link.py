@@ -15,6 +15,7 @@ from mobile_base.fleet import (
     ZoneClient,
     call_expired,
     to_fleet_state,
+    want_expired,
 )
 from mobile_base.states import State
 from mobile_base.topics import (
@@ -76,6 +77,8 @@ class FleetLinkNode(Node):
         self._req_sent_s: float | None = None
         self._rel_sent_s: float | None = None
         self._rel_sent = (False, "")
+        # When zone/want was last heard (None: never).
+        self._want_s: float | None = None
 
         self._create_interfaces()
         self.create_timer(1.0 / params.state_rate_hz, self._publish_state)
@@ -179,6 +182,7 @@ class FleetLinkNode(Node):
         """
         The behaviour wants (or no longer wants) the delivery zone.
         """
+        self._want_s = now_s(self)
         self._zone.update(want=bool(msg.data))
         self._check_zone_services()
 
@@ -245,6 +249,7 @@ class FleetLinkNode(Node):
         call of that kind is already in flight.
         """
         self._drop_unanswered_calls()
+        self._drop_stale_want()
         if self._zone.should_release() and self._rel_future is None:
             self._send_release()
         elif (
@@ -269,6 +274,19 @@ class FleetLinkNode(Node):
             self._rel_client.remove_pending_request(self._rel_future)
             self._rel_future, self._rel_sent_s = None, None
             self._zone.restore_release(*self._rel_sent)
+
+    def _drop_stale_want(self):
+        """
+        A zone/want true not repeated for want_timeout_s means its sender
+        died (the browser tool was killed holding the turn): stop wanting,
+        so a held turn is released instead of renewed for good.
+        """
+        timeout_s = float(self._param("want_timeout_s"))
+        if want_expired(self._zone.want, self._want_s, now_s(self), timeout_s):
+            self.get_logger().warning(
+                f"zone/want not heard for {timeout_s:.1f} s, giving up the turn"
+            )
+            self._zone.update(want=False)
 
     def _warn_no_answer(self, service: str):
         """
