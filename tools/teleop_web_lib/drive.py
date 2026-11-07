@@ -15,11 +15,14 @@ from teleop_web_lib.autopilot import (
     STOP,
     AutoPilot,
     DriveCommand,
+    Fleet,
     Vision,
 )
-from teleop_web_lib.config import AutoConfig
+from teleop_web_lib.config import AutoConfig, PeerConfig
 from teleop_web_lib.kinematics import WHEELS, clamp, mecanum_wheel_ratios
 from teleop_web_lib.line_sensor import counts_to_millivolts
+from teleop_web_lib.peer import PeerGuard
+from teleop_web_lib.state_log import StateLog, auto_snapshot
 
 log = logging.getLogger("teleop_web")
 
@@ -27,6 +30,9 @@ log = logging.getLogger("teleop_web")
 LOOP_PERIOD_S = 0.02
 # How long close() waits for the control thread to finish.
 JOIN_TIMEOUT_S = 1.0
+# A failing control step brakes every time but is logged at most this often
+# (s): the loop runs at 50 Hz.
+ERROR_LOG_PERIOD_S = 5.0
 
 # vx, vy and wz are the first three fields of a DriveCommand (speed is last).
 AXIS_COUNT = 3
@@ -51,15 +57,19 @@ class Drive:
         cmd_timeout_s: float,
         auto_cfg: AutoConfig | None = None,
         line_sensor=None,
+        peer_cfg: PeerConfig | None = None,
     ):
         """
-        Start the control thread.
+        Start the control thread. With `peer_cfg` on, Auto keeps clear of
+        the other collector once the fleet link gives it poses.
         """
         self._motors = motors
         self._max_duty = max_duty_ratio
         self._timeout_s = cmd_timeout_s
         self._line = line_sensor  # None = no line sensor
         self._pilot = AutoPilot(auto_cfg or AutoConfig())
+        if peer_cfg is not None and peer_cfg.enabled:
+            self._pilot.peer_guard = PeerGuard(peer_cfg)
         self.line_black = False
         self.line_raw: int | None = None
         self.line_counts: int | None = None  # AO through the ADC, if wired
@@ -67,6 +77,8 @@ class Drive:
         self._lock = threading.Lock()
         self._cmd = DriveCommand()  # last manual command
         self._stamp = 0.0
+        self._error_logged_s = -ERROR_LOG_PERIOD_S
+        self._state_log = StateLog()
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
@@ -78,6 +90,13 @@ class Drive:
         """
         with self._lock:
             self._pilot.vision = vision
+
+    def set_fleet(self, fleet: Fleet) -> None:
+        """
+        Give the autopilot its link to the other robots.
+        """
+        with self._lock:
+            self._pilot.fleet = fleet
 
     def set_auto(
         self,
@@ -137,33 +156,60 @@ class Drive:
     # ---------- control thread ----------
     def _loop(self) -> None:
         """
-        Read the line sensor, decide the command and drive the motors.
+        Run the control step until close(). An error brakes the motors and
+        the loop goes on: a dead thread left the wheels at the last speed.
         """
         while self._running:
-            now = time.monotonic()
-            if self._line is not None:
-                self.line_raw = self._line.raw_value()
-                self.line_black = self._line.is_black()
-                self.line_counts = self._line.analog_counts()
-                self._log_line_edge()
-            else:
-                self.line_raw = None
-                self.line_black = False
-                self.line_counts = None
-            command = self._next_command(now)
-            with self._lock:
-                self._pilot.note_motion(now, command)
-            scale = command.speed * self._max_duty
-            # DriveCommand: vy forward, vx strafe right; the kinematics take
-            # (forward, left, ccw), so the wheel names in the config are the
-            # real wheels.
-            ratios = mecanum_wheel_ratios(
-                command.vy,
-                -command.vx,
-                command.wz,
-            )
-            self._motors.set({w: r * scale for w, r in ratios.items()})
+            try:
+                self._step()
+            except Exception:
+                self._brake_after_error()
             time.sleep(LOOP_PERIOD_S)
+
+    def _brake_after_error(self) -> None:
+        """
+        Stop the wheels and log the error, at most once per ERROR_LOG_PERIOD_S.
+        """
+        now = time.monotonic()
+        if now - self._error_logged_s >= ERROR_LOG_PERIOD_S:
+            self._error_logged_s = now
+            log.exception("control step failed, motors stopped")
+        try:
+            self._motors.set(dict.fromkeys(WHEELS, 0.0))
+        except Exception:
+            log.exception("could not stop the motors")
+
+    def _step(self) -> None:
+        """
+        Read the line sensor, decide the command and drive the motors.
+        """
+        now = time.monotonic()
+        if self._line is not None:
+            self.line_raw = self._line.raw_value()
+            self.line_black = self._line.is_black()
+            self.line_counts = self._line.analog_counts()
+            self._log_line_edge()
+        else:
+            self.line_raw = None
+            self.line_black = False
+            self.line_counts = None
+        command = self._next_command(now)
+        with self._lock:
+            pilot = self._pilot
+            pilot.note_motion(now, command)
+            line = self._state_log.line(auto_snapshot(pilot), pilot.target_info)
+        if line is not None:
+            log.info(line)
+        scale = command.speed * self._max_duty
+        # DriveCommand: vy forward, vx strafe right; the kinematics take
+        # (forward, left, ccw), so the wheel names in the config are the
+        # real wheels.
+        ratios = mecanum_wheel_ratios(
+            command.vy,
+            -command.vx,
+            command.wz,
+        )
+        self._motors.set({w: r * scale for w, r in ratios.items()})
 
     def _log_line_edge(self) -> None:
         """

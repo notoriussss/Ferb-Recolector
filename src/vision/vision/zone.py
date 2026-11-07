@@ -22,6 +22,7 @@ import numpy as np
 
 from vision.camera_model import CameraModel
 from vision.color_detection import (
+    LANDMARK_HEIGHT_M,
     LEFT_LANDMARK_AIM_HEIGHTS,
     REGION_FLOOR,
     RIGHT_LANDMARK_AIM_HEIGHTS,
@@ -29,6 +30,7 @@ from vision.color_detection import (
     Detection,
     Marker,
     Region,
+    paper_outline,
 )
 from vision.hsv import HsvRange
 
@@ -39,6 +41,16 @@ DEFAULT_FLOOR_COLORS = ("blue", "green")
 DEFAULT_LANDMARK_MIN_AREA_PX = 200
 # Landmarks are upright: height at least this times the width.
 DEFAULT_LANDMARK_MIN_HEIGHT_RATIO = 1.2
+# A landmark blob must be at least this fraction of the height a 6.4 cm
+# landmark has at the distance of its base. 0 = off. Taller than wide was not
+# enough: a red cube (its top and front in view, stretched by motion blur)
+# passed for the red landmark and the robot carried cubes toward it
+# (5.11.2026). Measured: red cubes 0.10-0.41, the landmark 1.07-1.79.
+DEFAULT_LANDMARK_MIN_HEIGHT_FRACTION = 0.0
+# And at most this fraction of it. 0 = off. A red brick wall and clothes
+# behind the table (3-88 times a landmark) read as the red landmark 15 cm away
+# and the robot pushed its cube off the table's edge (5.11.2026).
+DEFAULT_LANDMARK_MAX_HEIGHT_FRACTION = 0.0
 # Smallest area paper blob (TODO measure on the track).
 DEFAULT_FLOOR_MIN_AREA_PX = 1500
 # Paper on the floor looks at least this many times wider than tall.
@@ -52,6 +64,17 @@ DEFAULT_IGNORE_MARGIN_PX = 80
 # also cover anything behind the area, outside the arena.
 DEFAULT_IGNORE_FLOOR_MARGIN_M = 0.0
 DEFAULT_IGNORE_GATE_DEPTH_M = 0.0
+# With only the gate, how far (m) across the line from the robot to the area
+# a cube may lie and still count as in it (0 = no limit). Up close the
+# landmarks fill the image and the span in landmark heights covers all of it.
+DEFAULT_IGNORE_GATE_HALF_WIDTH_M = 0.0
+# A cube whose base is no more than this many px below the area's lowest row
+# and beside it (within this many area widths of its box) is level with the
+# area or beyond it: the area sits at the arena's edge, so that is on the
+# border or outside. 0 = off. The yellow pot beside the area read as a yellow
+# cube and the robot went for it again and again (11.2026).
+DEFAULT_BESIDE_ROW_MARGIN_PX = 0
+DEFAULT_BESIDE_WIDTH_FACTOR = 1.0
 # Where the area sits between the left and right landmarks, as a fraction of
 # the distance between them (0 = left one, 1 = right one). 0.38 is where the
 # original graph paper was; a centred area is 0.5.
@@ -65,6 +88,9 @@ DEFAULT_FLOOR_IGNORE_TOUCHING_BOTTOM = False
 # A blob whose lowest row is within this many px of the image bottom
 # touches it.
 FLOOR_BOTTOM_MARGIN_PX = 3
+# A blob whose left or right side is within this many px of that image edge
+# goes on past it.
+FLOOR_SIDE_MARGIN_PX = 3
 
 # Smallest entry line blob (px) whose angle is trusted (TODO measure).
 DEFAULT_ENTRY_MIN_AREA_PX = 150
@@ -104,11 +130,16 @@ class ZoneParams:
     )
     landmark_min_area_px: int = DEFAULT_LANDMARK_MIN_AREA_PX
     landmark_min_height_ratio: float = DEFAULT_LANDMARK_MIN_HEIGHT_RATIO
+    landmark_min_height_fraction: float = DEFAULT_LANDMARK_MIN_HEIGHT_FRACTION
+    landmark_max_height_fraction: float = DEFAULT_LANDMARK_MAX_HEIGHT_FRACTION
     floor_min_area_px: int = DEFAULT_FLOOR_MIN_AREA_PX
     floor_min_flatness: float = DEFAULT_FLOOR_MIN_FLATNESS
     ignore_margin_px: int = DEFAULT_IGNORE_MARGIN_PX
     ignore_floor_margin_m: float = DEFAULT_IGNORE_FLOOR_MARGIN_M
     ignore_gate_depth_m: float = DEFAULT_IGNORE_GATE_DEPTH_M
+    ignore_gate_half_width_m: float = DEFAULT_IGNORE_GATE_HALF_WIDTH_M
+    beside_row_margin_px: int = DEFAULT_BESIDE_ROW_MARGIN_PX
+    beside_width_factor: float = DEFAULT_BESIDE_WIDTH_FACTOR
     floor_max_area_px: int = DEFAULT_FLOOR_MAX_AREA_PX
     gate_aim_fraction: float = DEFAULT_GATE_AIM_FRACTION
     # Horizontal offset, in landmark heights, from a single visible landmark
@@ -157,10 +188,13 @@ def in_zone(
     margin_px: int,
     floor_margin_m: float = 0.0,
     gate_depth_m: float = 0.0,
+    gate_half_width_m: float = 0.0,
 ) -> bool:
     """
     True when cube `det` already lies inside the delivery area, or on its
     edge or behind it (outside the arena) when the floor margins are set.
+    With only the gate, a cube farther than `gate_half_width_m` (when set)
+    across the line from the robot to the area is not in it.
     """
     x, y, w, h = zone.bbox
     if zone.color == REGION_FLOOR:
@@ -172,9 +206,51 @@ def in_zone(
     half_span_px = PAPER_HALF_SPAN_HEIGHTS * h
     if abs(det.u - zone.u) > half_span_px:
         return False
+    across_m = det.distance_m * math.sin(det.bearing_rad - zone.bearing_rad)
+    if gate_half_width_m > 0 and abs(across_m) > gate_half_width_m:
+        return False
     if gate_depth_m > 0:
         return det.distance_m >= zone.distance_m - gate_depth_m
     return det.v <= y + h + margin_px
+
+
+def beside_zone(
+    det: Detection,
+    zone: Region,
+    row_margin_px: int,
+    width_factor: float = DEFAULT_BESIDE_WIDTH_FACTOR,
+) -> bool:
+    """
+    True when cube `det` is level with the area or beyond it, beside it
+    (within `width_factor` area widths of its box): on the arena's edge or
+    outside it. Never with `row_margin_px` 0.
+    """
+    if row_margin_px <= 0:
+        return False
+    x, _, w, _ = zone.bbox
+    reach_px = width_factor * w
+    if not x - reach_px <= det.u <= x + w + reach_px:
+        return False
+    return det.v <= zone.v + row_margin_px
+
+
+def without_cubes_beside_zone(
+    detections: list[Detection],
+    zone: Region | None,
+    row_margin_px: int,
+    width_factor: float = DEFAULT_BESIDE_WIDTH_FACTOR,
+) -> list[Detection]:
+    """
+    The detections that are not level with the area and beside it (see
+    `beside_zone`).
+    """
+    if zone is None:
+        return list(detections)
+    return [
+        d
+        for d in detections
+        if not beside_zone(d, zone, row_margin_px, width_factor)
+    ]
 
 
 def polygon_centroid(
@@ -224,6 +300,7 @@ def without_cubes_in_zone(
     margin_px: int,
     floor_margin_m: float = 0.0,
     gate_depth_m: float = 0.0,
+    gate_half_width_m: float = 0.0,
 ) -> list[Detection]:
     """
     The detections that are not already inside the delivery area (see
@@ -234,7 +311,14 @@ def without_cubes_in_zone(
     return [
         d
         for d in detections
-        if not in_zone(d, zone, margin_px, floor_margin_m, gate_depth_m)
+        if not in_zone(
+            d,
+            zone,
+            margin_px,
+            floor_margin_m,
+            gate_depth_m,
+            gate_half_width_m,
+        )
     ]
 
 
@@ -284,6 +368,12 @@ class ZoneLocator:
             return None
         p = self.params
         left_color, right_color = p.landmark_colors
+        accept = (
+            self._sized_as_a_landmark
+            if p.landmark_min_height_fraction > 0
+            or p.landmark_max_height_fraction > 0
+            else None
+        )
         left, right = (
             self._on_the_floor(
                 self._landmarks.find_marker(
@@ -291,6 +381,7 @@ class ZoneLocator:
                     color,
                     p.landmark_min_area_px,
                     p.landmark_min_height_ratio,
+                    accept,
                 )
             )
             for color in (left_color, right_color)
@@ -302,6 +393,25 @@ class ZoneLocator:
             p.left_aim_heights,
             p.right_aim_heights,
         )
+
+    def _sized_as_a_landmark(self, bbox: tuple[int, int, int, int]) -> bool:
+        """
+        True when a blob with this bounding box is about as tall as a
+        landmark standing where its base is: at least
+        landmark_min_height_fraction of it (a 3 cm cube there is about a
+        third) and, when set, at most landmark_max_height_fraction (a wall
+        behind the table is many times more).
+        """
+        p = self.params
+        x, y, w, h = bbox
+        ground = self._camera.bearing_distance(x + w // 2, y + h - 1)
+        if ground is None:
+            return True  # base above the horizon: _on_the_floor decides
+        expected_px = self._camera.focal_px * LANDMARK_HEIGHT_M / ground[1]
+        if h < p.landmark_min_height_fraction * expected_px:
+            return False
+        max_fraction = p.landmark_max_height_fraction
+        return max_fraction <= 0 or h <= max_fraction * expected_px
 
     def _on_the_floor(self, marker: Marker | None) -> Marker | None:
         """
@@ -398,6 +508,12 @@ class ZoneLocator:
         robot must push the cube there from any side. Only the bearing: the
         far outline's rows are a few pixels from the horizon, so the
         centroid's distance was off by up to 20 cm; the near edge's is not.
+
+        Up close the paper is wider than the view: cut by one side of the
+        image only, its centre lies past that side, so the bearing is that
+        side's (the robot slides until it is not cut, or cut by both).
+        Aimed at the centre of the part in view, a robot 9 cm away pushed
+        the cube beside the area.
         """
         x, y, width_px, height_px = floor.bbox
         hsv = cv2.cvtColor(
@@ -414,7 +530,7 @@ class ZoneLocator:
         )
         if not contours:
             return self._aim_at_center(floor)
-        outline = max(contours, key=cv2.contourArea).reshape(-1, 2)
+        outline = paper_outline(contours)[0].reshape(-1, 2)
         ground = [self._camera.ground_point(u + x, v + y) for u, v in outline]
         if None in ground:
             return self._aim_at_center(floor)
@@ -428,8 +544,31 @@ class ZoneLocator:
         return replace(
             floor,
             u=x + width_px // 2,
-            bearing_rad=math.atan2(left_m, forward_m),
+            bearing_rad=self._past_cut_side(
+                floor,
+                bgr.shape[1],
+                math.atan2(left_m, forward_m),
+            ),
         )
+
+    def _past_cut_side(
+        self,
+        floor: Region,
+        frame_width_px: int,
+        bearing_rad: float,
+    ) -> float:
+        """
+        `bearing_rad`, or the bearing of the image side that cuts the paper
+        when only one side does.
+        """
+        x, _, width_px, _ = floor.bbox
+        cut_left = x <= FLOOR_SIDE_MARGIN_PX
+        cut_right = x + width_px >= frame_width_px - FLOOR_SIDE_MARGIN_PX
+        if cut_left == cut_right:
+            return bearing_rad
+        edge_u = 0 if cut_left else frame_width_px - 1
+        edge = self._camera.bearing_distance(edge_u, floor.v)
+        return bearing_rad if edge is None else edge[0]
 
     def _aim_at_center(self, floor: Region) -> Region:
         """

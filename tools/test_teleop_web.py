@@ -67,6 +67,41 @@ def test_manual_command_is_reported_as_manual_then_paused():
     drive.close()
 
 
+class BrokenFleet:
+    """
+    A fleet link whose publishing fails, as a dead ROS context does.
+    """
+
+    def __init__(self):
+        self.calls = 0
+
+    def update(self, state, want, carrying):
+        self.calls += 1
+        raise RuntimeError("context is not valid")
+
+    def granted(self):
+        return False
+
+    def delivered(self, color):
+        pass
+
+
+def test_an_error_in_the_control_loop_brakes_and_keeps_running():
+    motors = RecordingMotors()
+    drive = Drive(motors, max_duty_ratio=0.5, cmd_timeout_s=1.0)
+    drive.command(1, 0, 0, 1)
+    time.sleep(0.05)
+    assert motors.last["fl"] == 0.5
+    fleet = BrokenFleet()
+    drive.set_fleet(fleet)
+    time.sleep(0.1)
+    assert motors.last == STOPPED  # not left at the last speed
+    calls = fleet.calls
+    time.sleep(0.1)
+    assert fleet.calls > calls  # the loop is still alive
+    drive.close()
+
+
 def test_status_has_the_keys_the_page_reads():
     drive = Drive(RecordingMotors(), max_duty_ratio=0.5, cmd_timeout_s=0.1)
     assert set(drive.status()) == {

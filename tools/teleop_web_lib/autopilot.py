@@ -18,11 +18,21 @@ Axes: on the physical robot, `DriveCommand` maps to:
 can think in plain directions.
 """
 
+import logging
+import math
 import time
 from typing import NamedTuple, Protocol
 
+from teleop_web_lib.avoidance import (
+    ahead_and_left_m,
+    cubes_in_path,
+    dodge_direction,
+    separation_m,
+)
 from teleop_web_lib.config import AutoConfig
 from teleop_web_lib.kinematics import clamp
+
+log = logging.getLogger("teleop_web")
 
 # --- Machine states -----------------------------------------------------------
 STATE_PAUSED = "PAUSED"
@@ -46,11 +56,24 @@ STATE_DROP_BLIND = "DROP (blind)"
 STATE_EXPLORE_BACKUP = "EXPLORE (back up)"
 STATE_EXPLORE_AVOID = "EXPLORE (avoid gate)"
 STATE_EXPLORE_REACQUIRE = "EXPLORE (reacquire)"
+# Backing up before a catch to see again a cube to avoid that left the view.
+STATE_APPROACH_BACKUP = f"{STATE_APPROACH} (back up)"
+# Centring on a close cube by sliding sideways (Mecanum) instead of turning.
+STATE_SLIDE = f"{STATE_APPROACH} (slide)"
 # States in which the robot is going for a cube or pushing it.
-CHASE_STATES = (STATE_APPROACH, STATE_ALIGN, STATE_CATCH, STATE_CATCH_CHECK)
+CHASE_STATES = (
+    STATE_APPROACH,
+    STATE_ALIGN,
+    STATE_SLIDE,
+    STATE_CATCH,
+    STATE_CATCH_CHECK,
+)
 # Prefixes used to recognise a family of states.
 PREFIX_LINE = "LINE"
 PREFIX_DROP = "DROP"
+# Reason of the peer guard when the other collector is not in the way
+# (mobile_base.peer_avoidance.REASON_OK; peer.py imports this module).
+REASON_PEER_OK = "ok"
 PREFIX_DONE = "DONE"
 PREFIX_NO_CUBES = "NO CUBES"
 STATE_NO_CUBES = f"{PREFIX_NO_CUBES} (stopped)"
@@ -63,11 +86,14 @@ SUFFIX_ALIGN = " (align)"
 STATE_CARRY_SQUARE = f"{STATE_CARRY} (square)"
 STATE_CARRY_CENTER = f"{STATE_CARRY} (center)"
 STATE_CARRY_NO_ENTRY = f"{STATE_CARRY} (no entry line)"
+# Stopped short of the area until the fleet grants the delivery turn.
+STATE_CARRY_WAIT_ZONE = f"{STATE_CARRY} (wait zone)"
 # Squaring up at the paper: committed to delivering from there.
 COMMITTED_CARRY_STATES = (
     STATE_CARRY_SQUARE,
     STATE_CARRY_CENTER,
     STATE_CARRY_NO_ENTRY,
+    STATE_CARRY_WAIT_ZONE,
 )
 
 # --- Direction helpers --------------------------------------------------------
@@ -111,9 +137,52 @@ class Vision(Protocol):
         The best cube seen less than `timeout_s` ago, or None.
         """
 
+    def foreign_cubes(self, now: float, timeout_s: float) -> list:
+        """
+        The cubes to avoid seen less than `timeout_s` ago, nearest first.
+        """
+
+    def guarded_target_seen(self, now: float, timeout_s: float) -> bool:
+        """
+        True when a cube to go for was skipped less than `timeout_s` ago for
+        a cube to avoid next to it.
+        """
+
     def latest_zone(self, now: float, timeout_s: float):
         """
         The delivery gate seen less than `timeout_s` ago, or None.
+        """
+
+
+class Fleet(Protocol):
+    """
+    What the autopilot needs from the fleet link (teleop_web_lib/fleet.py).
+    """
+
+    def update(self, state: str, want: bool, carrying: bool) -> None:
+        """
+        Tell the fleet our state and whether we want the delivery turn.
+        """
+
+    def granted(self) -> bool:
+        """
+        True while we hold the delivery turn.
+        """
+
+    def delivered(self, color: str) -> None:
+        """
+        A cube of `color` was left in the area.
+        """
+
+    def zone_busy(self) -> bool:
+        """
+        True while another robot or Perry holds the delivery area.
+        """
+
+    def poses(self) -> tuple:
+        """
+        The latest (own, other collector) overhead poses, None where none
+        arrived; only read with a peer guard.
         """
 
 
@@ -165,6 +234,50 @@ class AutoPilot:
         """
         self.cfg = cfg
         self.vision = vision
+        # Link to the other robots; None = alone on the track (no turns).
+        self.fleet: Fleet | None = None
+        # Guard against the other collector from the fleet's overhead poses
+        # (teleop_web_lib/peer.py); None = off.
+        self.peer_guard = None
+        # Colour of the last cube chased, reported when it is delivered.
+        self._cube_color = ""
+        # Colour of a counted delivery not yet reported to the fleet.
+        self._unreported_color: str | None = None
+        # The area is close enough to ask for the turn (set while carrying),
+        # and when it last was: the wish is kept zone_want_hold_s past it.
+        self._near_zone = False
+        self._near_zone_s = -math.inf
+        # After a delivery the turn is kept until the robot is out of the
+        # exclusion zone (or until this time): the next one must not come in
+        # while we are still at the entry.
+        self._leaving_until_s = -math.inf
+        # When the area was last seen within zone_request_distance_m while
+        # waiting for the turn: the wait holds until carry_zone_timeout_s
+        # past it, whatever the landmarks do in between.
+        self._wait_seen_s = -math.inf
+        # The last wish for the turn sent to the fleet (for the state log).
+        self.fleet_want = False
+        # Side of the slide around the cubes to avoid (None before the
+        # first). Kept until _dodge_side_until_s, also across the turns in
+        # between, so the robot does not slide back and forth.
+        self._dodge_dir: float | None = None
+        self._dodge_side_until_s = -math.inf
+        # The last command was a slide around a cube to avoid.
+        self._dodging = False
+        # Times of the recent slides around a cube to avoid that ended on
+        # the line, to break the loop "slide into the border, back off".
+        self._dodge_line_hits: list[float] = []
+        # Line recovery: turn after moving away, and which way (None: the
+        # search direction).
+        self._line_needs_turn = False
+        self._line_turn_dir: float | None = None
+        # When a cube to avoid was last seen closer than
+        # foreign_memory_distance_m: one that left the view since may be
+        # right beside the scoop. Before a catch the robot backs up once
+        # (until _foreign_backup_until) to see it again.
+        self._close_foreign_s = -math.inf
+        self._foreign_backup_until = 0.0
+        self._foreign_backup_used = False
         self.enabled = cfg.enabled
         self.state = STATE_PAUSED
         self.target_info: str | None = None
@@ -239,17 +352,98 @@ class AutoPilot:
         The operator is driving by hand.
         """
         self.state = STATE_MANUAL
+        self._near_zone = False
+        self._near_zone_s = -math.inf
+        self._leaving_until_s = -math.inf
+        self._sync_fleet()
 
     def mark_paused(self) -> None:
         """
-        Auto is off and nobody is driving.
+        Auto is off and nobody is driving. The fleet hears it too: a pause
+        in the middle of a delivery must give the turn back.
         """
         self.state = STATE_PAUSED
+        self._near_zone = False
+        self._near_zone_s = -math.inf
+        self._leaving_until_s = -math.inf
+        self._sync_fleet()
 
     # ---------- main step ----------
     def step(self, now: float, line_black: bool = False) -> DriveCommand:
         """
         The command for time `now`; `line_black` is the line sensor reading.
+        """
+        self._near_zone = False
+        command = self._guard_peer(now, self._decide(now, line_black))
+        if self._near_zone:
+            self._near_zone_s = now
+        self._check_left_zone(now)
+        self._sync_fleet(now)
+        return command
+
+    def _check_left_zone(self, now: float) -> None:
+        """
+        After a delivery, stop holding the turn once the area is seen
+        farther than zone_exclusion_m.
+        """
+        if now >= self._leaving_until_s:
+            return
+        zone = self._zone_in_view(now)
+        if zone is not None and zone.distance_m > self.cfg.zone_exclusion_m:
+            self._leaving_until_s = -math.inf
+
+    def _other_holds_zone(self) -> bool:
+        """
+        True while another robot or Perry holds the delivery area (the
+        exclusion zone is on and there is a fleet).
+        """
+        return (
+            self.cfg.zone_exclusion_m > 0
+            and self.fleet is not None
+            and self.fleet.zone_busy()
+        )
+
+    def _guard_peer(self, now: float, command: DriveCommand) -> DriveCommand:
+        """
+        Slow, stop or turn away from the other collector in front: the
+        camera does not see it.
+        """
+        if self.peer_guard is None or self.fleet is None:
+            return command
+        command, reason = self.peer_guard.filter(
+            command,
+            self.fleet.poses(),
+            now,
+        )
+        if reason != REASON_PEER_OK:
+            self.target_info = f"peer: {reason}"
+        return command
+
+    def _sync_fleet(self, now: float | None = None) -> None:
+        """
+        Tell the fleet what we want. The turn is asked for while carrying
+        close to the area (and zone_want_hold_s past the last time it was:
+        its distance flickers) and kept through the push and the back up, so
+        the other robot and the arm stay out until we are clear.
+        """
+        if self.fleet is None:
+            return
+        recently_near = (
+            now is not None
+            and now - self._near_zone_s <= self.cfg.zone_want_hold_s
+        )
+        leaving = now is not None and now < self._leaving_until_s
+        want = (
+            self.state.startswith(PREFIX_DROP)
+            or leaving
+            or (self.carrying and (self._near_zone or recently_near))
+        )
+        self.fleet_want = want
+        self.fleet.update(self.state, want, self.carrying)
+
+    def _decide(self, now: float, line_black: bool) -> DriveCommand:
+        """
+        The command for time `now`, without telling the fleet.
         """
         if self.state.startswith((PREFIX_DONE, PREFIX_NO_CUBES)):
             return STOP
@@ -257,6 +451,8 @@ class AutoPilot:
             # Back from WASD or pause: if it had a cube, keep carrying it.
             self._resume_after_pause(now)
         self._line_black = line_black
+        if self._close_foreign_in_view(now):
+            self._close_foreign_s = now
         if line_black and not self.state.startswith(PREFIX_LINE):
             self._start_line_recovery(now)
         for phase in (self._line_phase, self._catch_phase, self._drop_phase):
@@ -267,8 +463,96 @@ class AutoPilot:
             self.state = STATE_PAUSED
             return STOP
         if self.state.startswith(STATE_CARRY):
-            return self._carry_step(now)
-        return self._search_step(now)
+            command = self._carry_step(now)
+        else:
+            command = self._search_step(now)
+        return self._dodge_foreign(now, command)
+
+    def _dodge_foreign(self, now: float, command: DriveCommand) -> DriveCommand:
+        """
+        Never push a cube to avoid, with or without a cube of our own in the
+        scoop: a plain forward move toward one that is in the way becomes a
+        slide past it, including right before a catch or delivery push
+        starts. Once a catch or delivery push has started, it runs in its
+        own phase above; turns and slides do not run it over.
+        """
+        cfg = self.cfg
+        blocking = self._foreign_in_way(now, command)
+        self._dodging = bool(blocking)
+        if not blocking:
+            return command
+        if self._dodge_dir is None or now >= self._dodge_side_until_s:
+            self._dodge_dir = dodge_direction(
+                self._foreign_near(now),
+                cfg.foreign_clearance_m,
+            )
+        self._dodge_side_until_s = max(
+            self._dodge_side_until_s,
+            now + cfg.foreign_side_memory_s,
+        )
+        cube = blocking[0]
+        if self.state == STATE_CATCH:
+            self.state = STATE_APPROACH
+        elif self.state.startswith(PREFIX_DROP):
+            self.state = STATE_CARRY_CENTER
+        self.target_info = (
+            f"avoiding {cube.color} {cube.distance_m * CM_PER_M:.0f}cm"
+        )
+        return _strafe(self._dodge_dir, cfg.strafe_speed)
+
+    def _foreign_in_way(self, now: float, command: DriveCommand) -> list:
+        """
+        The cubes to avoid blocking a plain forward move, nearest first;
+        empty when the path is clear or the command is a turn/slide.
+        """
+        cfg = self.cfg
+        if self.vision is None or command.vy <= 0:
+            return []
+        if command.vx or command.wz:
+            return []
+        clearance_m = cfg.foreign_clearance_m
+        behind_clearance_m = cfg.foreign_behind_clearance_m
+        if self._dodging:
+            clearance_m += cfg.foreign_exit_margin_m
+            behind_clearance_m += cfg.foreign_exit_margin_m
+        cubes = self._foreign_near(now)
+        goal_m = self._goal_ahead_m(now)
+        # The whole chassis sweeps the floor up to the target; past it only
+        # the scoop goes on, by the push overshoot.
+        in_path = cubes_in_path(
+            cubes,
+            clearance_m,
+            cfg.foreign_avoid_distance_m,
+            goal_m,
+        )
+        past_target = cubes_in_path(
+            cubes,
+            behind_clearance_m,
+            cfg.foreign_avoid_distance_m,
+            goal_m + cfg.foreign_behind_margin_m,
+        )
+        return in_path + [c for c in past_target if c not in in_path]
+
+    def _foreign_near(self, now: float) -> list:
+        """
+        The cubes to avoid in view closer than foreign_avoid_distance_m,
+        nearest first.
+        """
+        if self.vision is None:
+            return []
+        cubes = self.vision.foreign_cubes(now, self.cfg.lost_timeout_s)
+        reach_m = self.cfg.foreign_avoid_distance_m
+        return [c for c in cubes if c.distance_m <= reach_m]
+
+    def _goal_ahead_m(self, now: float) -> float:
+        """
+        How far ahead the forward move ends: the cube being chased (it is
+        caught there) or, carrying or with none, no limit.
+        """
+        if self.carrying or now < self._ignore_cubes_until:
+            return math.inf
+        det = self.vision.latest_detection(now, self.cfg.lost_timeout_s)
+        return math.inf if det is None else det.distance_m
 
     def _resume_after_pause(self, now: float) -> None:
         """
@@ -288,24 +572,47 @@ class AutoPilot:
         """
         cfg = self.cfg
         self._ban_cubes_if_chasing_one(now)
-        self._settle_cube_on_line()
+        self._escape = self._escape_command(now)
+        loop = self._note_dodge_into_line(now)
+        self._settle_cube_on_line(sideways=self._escape.vx != 0)
         if not self.enabled:
             self._resume_state = STATE_PAUSED
         elif self.carrying:
             self._resume_state = STATE_CARRY
         else:
             self._resume_state = STATE_SEARCH
-        self._escape = self._escape_command(now)
         self.state = STATE_LINE_STOP
         self._line_stop_until = now + cfg.line_stop_s
         self._phase_until = self._line_stop_until + cfg.line_backup_s
-        # Spin inward only when we hit the line going forward in Auto mode.
-        needs_turn = (
+        # Spin inward when we hit the line going forward in Auto mode, or
+        # away from the border when slides keep ending on it.
+        self._line_needs_turn = loop or (
             self.enabled and self._escape.vy < 0 and self._escape.vx == 0
         )
-        turn_s = cfg.line_turn_s if needs_turn else 0.0
+        turn_s = cfg.line_turn_s if self._line_needs_turn else 0.0
         self._line_turn_until = self._phase_until + turn_s
         self.target_info = None
+
+    def _note_dodge_into_line(self, now: float) -> bool:
+        """
+        A slide around a cube to avoid ended on the line: slide the other
+        way from now on. True when it keeps happening (foreign_loop_hits
+        within foreign_loop_window_s): then also turn away from the border.
+        """
+        cfg = self.cfg
+        slid = self._dodge_dir
+        if not self._dodging or slid is None or self._escape.vx == 0:
+            return False
+        self._dodge_dir = -slid
+        self._dodge_side_until_s = now + cfg.foreign_line_side_memory_s
+        window_s = cfg.foreign_loop_window_s
+        hits = [t for t in self._dodge_line_hits if now - t <= window_s]
+        self._dodge_line_hits = hits + [now]
+        if len(self._dodge_line_hits) < cfg.foreign_loop_hits:
+            return False
+        self._dodge_line_hits = []
+        self._line_turn_dir = -slid  # the border is on the side it slid to
+        return True
 
     def _ban_cubes_if_chasing_one(self, now: float) -> None:
         """
@@ -322,24 +629,37 @@ class AutoPilot:
         self._last_seen_s = None
         self._reveal_pending = False
 
-    def _settle_cube_on_line(self) -> None:
+    def _settle_cube_on_line(self, sideways: bool = False) -> None:
         """
         A line hit while carrying: during the delivery push the cube is
-        already in the area (count it); anywhere else it was pushed over
+        already in the area (count it); driving forward it was pushed over
         the border and stays behind, so the robot is no longer carrying.
+        Sliding sideways (around a cube to avoid) the cube stays between the
+        paddles: twice the robot dropped a cube it still had that way.
         """
         if self.state.startswith(PREFIX_DROP):
             self._finish_drop()
-        else:
+            self._report_delivery()  # no back up check will run now
+        elif not sideways:
             self.carrying = False
 
     def _finish_drop(self) -> None:
         """
-        The cube is on the delivery area: stop carrying it and count it.
+        The cube is on the delivery area: stop carrying it and count it. The
+        fleet hears about it once the back up confirms it stayed there.
         """
         if self.carrying:
             self.carrying = False
             self.delivered_count += 1
+            self._unreported_color = self._cube_color
+
+    def _report_delivery(self) -> None:
+        """
+        Tell the fleet about the delivery counted by `_finish_drop`, once.
+        """
+        if self.fleet is not None and self._unreported_color is not None:
+            self.fleet.delivered(self._unreported_color)
+        self._unreported_color = None
 
     def note_motion(self, now: float, command: DriveCommand) -> None:
         """
@@ -389,18 +709,15 @@ class AutoPilot:
             # leaves the border before turning.
             backing_s = now - self._line_stop_until
             if self._line_black and backing_s < cfg.line_backup_max_s:
-                needs_turn = (
-                    self.enabled
-                    and self._escape.vy < 0
-                    and self._escape.vx == 0
-                )
-                turn_s = cfg.line_turn_s if needs_turn else 0.0
+                turn_s = cfg.line_turn_s if self._line_needs_turn else 0.0
                 self._phase_until = now + cfg.line_backup_s
                 self._line_turn_until = self._phase_until + turn_s
             return self._escape
         if now < self._line_turn_until:
             self.state = STATE_LINE_TURN
-            return _turn(self._search_dir, cfg.turn_speed)
+            direction = self._line_turn_dir or self._search_dir
+            return _turn(direction, cfg.turn_speed)
+        self._line_turn_dir = None
         self._last_motion = None
         self.state = self._resume_state
         self._search_start_s = now
@@ -454,9 +771,11 @@ class AutoPilot:
             # outside. Only then: checked while turning, any other cube on
             # the table near the area undid deliveries that were fine.
             self.delivered_count -= 1
+            self._unreported_color = None  # Perry must not count it
             self._end_drop(now)
             return None
         if now < backup_until + cfg.deliver_turn_s:
+            self._report_delivery()
             self.state = STATE_DROP_TURN
             return _turn(self._search_dir, cfg.turn_speed)
         self._end_drop(now)
@@ -521,8 +840,11 @@ class AutoPilot:
 
     def _end_drop(self, now: float) -> None:
         """
-        Back to looking for cubes, with a fresh search.
+        Back to looking for cubes, with a fresh search; the turn is kept
+        until the robot is out of the exclusion zone.
         """
+        if self.cfg.zone_exclusion_m > 0:
+            self._leaving_until_s = now + self.cfg.zone_leave_max_s
         self.state = STATE_SEARCH
         self._search_start_s = now
         self._idle_start_s = now
@@ -567,14 +889,22 @@ class AutoPilot:
         Look for a cube: approach it, catch it, or roam when none is seen.
         """
         cfg = self.cfg
+        if now < self._foreign_backup_until:
+            self.state = STATE_APPROACH_BACKUP
+            return _backward(cfg.line_speed)
         det = None
         if self.vision is not None and now >= self._ignore_cubes_until:
             det = self.vision.latest_detection(now, cfg.lost_timeout_s)
         if det is None:
             return self._no_cube_step(now)
+        zone = self._zone_in_view(now)
+        if self._other_holds_zone() and self._must_avoid(zone):
+            # A cube by the area while another robot delivers: keep clear.
+            return self._avoid_step(zone)
 
         self.target_info = f"{det.color} {det.distance_m * CM_PER_M:.0f}cm"
         self._last_seen_s = now
+        self._cube_color = det.color
         self._last_bearing_rad = det.bearing_rad
         self._reveal_pending = det.distance_m <= cfg.reveal_max_distance_m
         self._search_start_s = now
@@ -587,6 +917,14 @@ class AutoPilot:
             or det.v >= cfg.scoop_arrive_v_px
         )
         if at_scoop and self._is_aligned(det.bearing_rad):
+            if self._foreign_hidden_nearby(now):
+                self._foreign_backup_used = True
+                self._foreign_backup_until = now + cfg.reveal_backup_s
+                self.state = STATE_APPROACH_BACKUP
+                return _backward(cfg.line_speed)
+            if not self._aligned_for_catch(now, det):
+                self.state = STATE_SLIDE
+                return _strafe(_side_of(det.bearing_rad), cfg.strafe_speed)
             self.state = STATE_CATCH
             self._phase_until = now + cfg.scoop_push_s
             return _forward(cfg.forward_speed)
@@ -597,12 +935,43 @@ class AutoPilot:
             STATE_APPROACH,
         )
 
+    def _close_foreign_in_view(self, now: float) -> bool:
+        """
+        True when a cube to avoid is in view closer than
+        foreign_memory_distance_m.
+        """
+        if self.vision is None:
+            return False
+        limit_m = self.cfg.foreign_memory_distance_m
+        cubes = self.vision.foreign_cubes(now, self.cfg.lost_timeout_s)
+        return any(c.distance_m <= limit_m for c in cubes)
+
+    def _foreign_hidden_nearby(self, now: float) -> bool:
+        """
+        True when a cube to avoid was close less than foreign_memory_s ago
+        and has left the view since: turning toward a cube puts one beside
+        the scoop out of the camera's sight, and the catch push sweeps it
+        in. Once per such cube: the backup shows it again if it is there.
+        """
+        if now - self._close_foreign_s > self.cfg.foreign_memory_s:
+            self._foreign_backup_used = False
+            return False
+        if self._foreign_backup_used:
+            return False
+        return not self._close_foreign_in_view(now)
+
     def _no_cube_step(self, now: float) -> DriveCommand:
         """
         No cube in view: wait briefly, give up after a while, else roam.
         """
         cfg = self.cfg
         self.target_info = None
+        if self._target_turned_guarded(now):
+            # The cube is still there, now with a cube to avoid next to it:
+            # do not wait for it, uncover it or creep toward it. Creeping to
+            # such a cube by the border ran the robot over the line.
+            self._last_seen_s = None
+            self._reveal_pending = False
         # If it lost sight of a cube a moment ago, wait briefly before turning.
         recently_seen = (
             self._last_seen_s is not None
@@ -614,6 +983,15 @@ class AutoPilot:
         if (now - self._idle_start_s) >= cfg.no_cubes_stop_s:
             return self._give_up()
         return self._scan_step(now)
+
+    def _target_turned_guarded(self, now: float) -> bool:
+        """
+        True when the cube just lost was skipped for a cube to avoid next
+        to it rather than lost from view.
+        """
+        if self.vision is None or self._last_seen_s is None:
+            return False
+        return self.vision.guarded_target_seen(now, self.cfg.lost_timeout_s)
 
     def _give_up(self) -> DriveCommand:
         """
@@ -662,21 +1040,32 @@ class AutoPilot:
         """
         True when the delivery area or its legos are this close and no cube
         is in view: roaming forward there ran the robot over the legos and
-        along the area's black tape.
+        along the area's black tape. While another robot or Perry holds the
+        area, closer than zone_exclusion_m too: the collectors collided
+        there.
         """
+        if zone is None:
+            return False
+        if zone.distance_m <= self.cfg.gate_avoid_distance_m:
+            return True
         return (
-            zone is not None
-            and zone.distance_m <= self.cfg.gate_avoid_distance_m
+            zone.distance_m <= self.cfg.zone_exclusion_m
+            and self._other_holds_zone()
         )
 
     def _avoid_step(self, zone) -> DriveCommand:
         """
         Turn away from the area. The side is chosen once, when the avoidance
         starts, and kept: choosing it every tick flips with the bearing noise
-        and the robot never turns.
+        and the robot never turns. A scan already turning in place goes on
+        the same way (the area passes and leaves the view): reversing it
+        swept only the area's sector, and cubes behind were never seen.
         """
         if self.state != STATE_EXPLORE_AVOID:
-            self._avoid_dir = -_side_of(zone.bearing_rad)
+            if self.state == f"{STATE_EXPLORE}{SUFFIX_TURN}":
+                self._avoid_dir = self._search_dir
+            else:
+                self._avoid_dir = -_side_of(zone.bearing_rad)
             # The scan carries on this way: turning back toward the area (the
             # side it delivered on) wobbled in front of it until it gave up.
             self._search_dir = self._avoid_dir
@@ -707,26 +1096,18 @@ class AutoPilot:
         """
         cfg = self.cfg
         zone = self._zone_in_view(now)
+        held = self._hold_wait(now, zone)
+        if held is not None:
+            return held
         committed = self.state in COMMITTED_CARRY_STATES
         paper = zone is not None and zone.color == ZONE_SOURCE_FLOOR
         if paper:
             self._last_paper_s = now
             self._last_paper_bearing_rad = zone.bearing_rad
         elif committed:
-            lost_s = now - self._last_paper_s
-            if lost_s < cfg.carry_paper_hold_s:
-                # The paper flickered out: wait for it, do not turn away.
-                return STOP
-            slide_until_s = cfg.carry_paper_hold_s + cfg.carry_paper_slide_s
-            off_side = (
-                abs(self._last_paper_bearing_rad)
-                > cfg.drop_align_tolerance_rad
-            )
-            if off_side and lost_s < slide_until_s:
-                # Squaring up pushed it out of view: slide back toward it.
-                self.state = STATE_CARRY_CENTER
-                side = _side_of(self._last_paper_bearing_rad)
-                return _strafe(side, cfg.strafe_speed)
+            command = self._paper_lost_step(now)
+            if command is not None:
+                return command
         if zone is None:
             if now - self._search_start_s >= cfg.carry_zone_timeout_s:
                 return self._give_up_carrying(now)
@@ -738,6 +1119,10 @@ class AutoPilot:
         )
         self._search_start_s = now
         self._search_dir = _side_of(zone.bearing_rad)
+        if self._must_wait_for_turn(zone):
+            self.state = STATE_CARRY_WAIT_ZONE
+            self._wait_seen_s = now
+            return STOP
         # The landmarks only lead there (slowing down near them): the push
         # starts once the paper is in view, from in front of the entry line.
         commit_m = cfg.deliver_commit_distance_m
@@ -757,6 +1142,69 @@ class AutoPilot:
             stop_distance_m,
             STATE_CARRY,
         )
+
+    def _hold_wait(self, now: float, zone) -> DriveCommand | None:
+        """
+        Waiting for the turn: stay put while it is not granted, even with
+        the landmarks out of view or read far away for a moment (turning to
+        look for them hit the line and lost the cube; a far reading drove on
+        without the turn). Past carry_zone_timeout_s without the area near,
+        or once granted, None: the normal carry step goes on (with the turn
+        it heads for the area even if it is not in view this frame).
+        """
+        if self.state != STATE_CARRY_WAIT_ZONE or self.fleet is None:
+            return None
+        if self.fleet.granted():
+            return None
+        cfg = self.cfg
+        if zone is not None and zone.distance_m <= cfg.zone_request_distance_m:
+            self._wait_seen_s = now
+        if now - self._wait_seen_s >= cfg.carry_zone_timeout_s:
+            return None
+        self._near_zone = True  # keep asking for the turn
+        return STOP
+
+    def _paper_lost_step(self, now: float) -> DriveCommand | None:
+        """
+        Committed to the paper but it is out of view: wait for it, or slide
+        back toward where it was. None once neither applies.
+        """
+        cfg = self.cfg
+        self._near_zone = True  # keep the turn through a flicker
+        lost_s = now - self._last_paper_s
+        if lost_s < cfg.carry_paper_hold_s:
+            # The paper flickered out: wait for it, do not turn away.
+            return STOP
+        if (
+            self.state == STATE_CARRY_WAIT_ZONE
+            and lost_s < cfg.carry_zone_timeout_s
+        ):
+            # No turn yet: never slide or roam toward the area. Past the
+            # timeout the cube is taken as lost, as anywhere else.
+            return STOP
+        slide_until_s = cfg.carry_paper_hold_s + cfg.carry_paper_slide_s
+        off_side = (
+            abs(self._last_paper_bearing_rad) > cfg.drop_align_tolerance_rad
+        )
+        if off_side and lost_s < slide_until_s:
+            # Squaring up pushed it out of view: slide back toward it.
+            self.state = STATE_CARRY_CENTER
+            side = _side_of(self._last_paper_bearing_rad)
+            return _strafe(side, cfg.strafe_speed)
+        return None
+
+    def _must_wait_for_turn(self, zone) -> bool:
+        """
+        True when the area is in the waiting range and the fleet has not
+        granted us the turn. Within the asking range it also marks that the
+        turn is wanted. Alone on the track there is nothing to wait for.
+        """
+        cfg = self.cfg
+        if self.fleet is None or zone.distance_m > cfg.zone_request_distance_m:
+            return False
+        self._near_zone = True
+        in_wait_range = zone.distance_m <= cfg.zone_wait_distance_m
+        return in_wait_range and not self.fleet.granted()
 
     def _square_and_drop(self, now: float, zone) -> DriveCommand:
         """
@@ -797,13 +1245,17 @@ class AutoPilot:
         if abs(entry_angle_rad) > square_tol:
             self.state = STATE_CARRY_SQUARE
             return _turn(_side_of(entry_angle_rad), cfg.search_turn_speed)
-        center_tol = cfg.drop_align_tolerance_rad
-        if self.state == STATE_CARRY_CENTER:
-            center_tol *= cfg.align_exit_fraction
+        center_tol = self._drop_center_tolerance(now, zone)
         if abs(zone.bearing_rad) > center_tol:
             self.state = STATE_CARRY_CENTER
             return _strafe(_side_of(zone.bearing_rad), cfg.strafe_speed)
         # Push straight in, guided by the area's edges (see _guided_push_step).
+        log.info(
+            "delivery push: area %.3f m at %.3f rad, entry %s rad",
+            zone.distance_m,
+            zone.bearing_rad,
+            zone.entry_angle_rad,
+        )
         self.state = STATE_DROP
         self._drop_edge_first = (now, zone.distance_m)
         self._drop_edge_last = (now, zone.distance_m)
@@ -812,6 +1264,41 @@ class AutoPilot:
         self._phase_until = now + cfg.deliver_push_max_s
         self._drop_blind = False
         return _forward(cfg.forward_speed)
+
+    def _drop_center_tolerance(self, now: float, zone) -> float:
+        """
+        How close to the area's centre the robot must slide before pushing:
+        wider when sliding toward the centre would move into or back behind a
+        foreign cube in front of the entry line.
+        """
+        cfg = self.cfg
+        if self._center_blocked_by_foreign(now, zone):
+            return cfg.square_max_bearing_rad
+        if self.state == STATE_CARRY_CENTER:
+            return cfg.drop_align_tolerance_rad * cfg.align_exit_fraction
+        return cfg.drop_align_tolerance_rad
+
+    def _center_blocked_by_foreign(self, now: float, zone) -> bool:
+        """
+        True when sliding toward the area's centre would move into or back
+        behind a cube to avoid in front of the area: one nearer than it and
+        within foreign_clearance_m of the band the robot slides through.
+        Any other cube near by must not let it push off the centre.
+        """
+        cubes = self._foreign_near(now)
+        if not cubes:
+            return False
+        if self._dodging:
+            return True
+        centre_left_m = zone.distance_m * math.sin(zone.bearing_rad)
+        clearance_m = self.cfg.foreign_clearance_m
+        low_m = min(0.0, centre_left_m) - clearance_m
+        high_m = max(0.0, centre_left_m) + clearance_m
+        for cube in cubes:
+            ahead_m, left_m = ahead_and_left_m(cube)
+            if ahead_m <= zone.distance_m and low_m <= left_m <= high_m:
+                return True
+        return False
 
     def _give_up_carrying(self, now: float) -> DriveCommand:
         """
@@ -825,6 +1312,24 @@ class AutoPilot:
         return STOP
 
     # ---------- motion primitives ----------
+    def _aligned_for_catch(self, now: float, det) -> bool:
+        """
+        True when the catch push can start: with a cube to avoid within
+        catch_precise_near_m of the target, only once the target is within
+        catch_precise_align_rad of straight ahead. Pushed a little off
+        centre, a paddle swept a blue cube 13 cm away in with the yellow.
+        """
+        cfg = self.cfg
+        if abs(det.bearing_rad) <= cfg.catch_precise_align_rad:
+            return True
+        cubes = []
+        if self.vision is not None:
+            cubes = self.vision.foreign_cubes(now, cfg.lost_timeout_s)
+        return not any(
+            separation_m(det, cube) <= cfg.catch_precise_near_m
+            for cube in cubes
+        )
+
     def _is_aligned(self, bearing_rad: float) -> bool:
         """
         True when the target is straight enough ahead to push into it.
@@ -855,18 +1360,29 @@ class AutoPilot:
         label: str,
     ) -> DriveCommand:
         """
-        Turn in place if off-heading; otherwise drive straight forward
-        (star motion: never mix rotation and translation on Mecanum wheels,
-        which causes sideways drift).
+        Turn in place if off-heading (slide sideways instead when close to
+        a cube: a turn swings the paddles over the floor beside the scoop);
+        otherwise drive straight forward (star motion: never mix rotation and
+        translation on Mecanum wheels, which causes sideways drift).
         """
         cfg = self.cfg
         tolerance_rad = cfg.align_tolerance_rad
         if distance <= cfg.close_align_distance_m:
             tolerance_rad *= cfg.close_align_factor
-        if self.state.endswith(SUFFIX_ALIGN) or self.state == STATE_ALIGN:
+        if self.state.endswith(SUFFIX_ALIGN) or self.state in (
+            STATE_ALIGN,
+            STATE_SLIDE,
+        ):
             # Already turning: finish the turn, do not stop at the edge.
             tolerance_rad *= cfg.align_exit_fraction
         if abs(bearing) > tolerance_rad:
+            slide = (
+                label == STATE_APPROACH
+                and distance <= cfg.strafe_align_distance_m
+            )
+            if slide:
+                self.state = STATE_SLIDE
+                return _strafe(_side_of(bearing), cfg.strafe_speed)
             if label == STATE_APPROACH:
                 self.state = STATE_ALIGN
             else:

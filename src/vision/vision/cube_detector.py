@@ -217,6 +217,7 @@ class CubeDetectorNode(Node):
             zone_params.ignore_margin_px,
             zone_params.ignore_floor_margin_m,
             zone_params.ignore_gate_depth_m,
+            zone_params.ignore_gate_half_width_m,
         )
         self._pub_cubes.publish(_to_message(detections, msg.header))
         zone_msg = CubeDetectionArray(header=msg.header)

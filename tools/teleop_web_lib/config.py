@@ -12,9 +12,9 @@ from pathlib import Path
 # --- Auto mode defaults (real values: tools/teleop_web.yaml, section auto) ----
 DEFAULT_STOP_DISTANCE_M = 0.125
 DEFAULT_SLOW_DOWN_DISTANCE_M = 0.45
-DEFAULT_FORWARD_SPEED = 0.42
-DEFAULT_ROAM_FORWARD_SPEED = 0.35
-DEFAULT_TURN_SPEED = 0.32
+DEFAULT_FORWARD_SPEED = 0.36
+DEFAULT_ROAM_FORWARD_SPEED = 0.30
+DEFAULT_TURN_SPEED = 0.28
 DEFAULT_SEARCH_TURN_SPEED = 0.25
 DEFAULT_ALIGN_TOLERANCE_RAD = 0.22
 DEFAULT_LOST_TIMEOUT_S = 0.6
@@ -28,7 +28,7 @@ DEFAULT_LINE_STOP_S = 0.2
 DEFAULT_LINE_BACKUP_MAX_S = 0.9
 # How recent the last movement must be for the line recovery to undo it.
 DEFAULT_LINE_MOTION_MEMORY_S = 1.5
-DEFAULT_LINE_SPEED = 0.35
+DEFAULT_LINE_SPEED = 0.30
 # Only the landmarks in view: slow down this far from them (no delivery).
 DEFAULT_ZONE_STOP_DISTANCE_M = 0.59
 # Area paper in view: arrived when its near edge is this close or this low.
@@ -45,7 +45,7 @@ DEFAULT_ROAM_FORWARD_S = 1.0
 # Largest sideways correction while driving toward a target (0-1).
 DEFAULT_STEER_LIMIT = 0.7
 # Slowest approach speed, as a fraction of forward_speed.
-DEFAULT_MIN_SPEED_FRACTION = 0.35
+DEFAULT_MIN_SPEED_FRACTION = 0.70
 # Smallest slow-down span (m), avoids dividing by a near-zero distance.
 DEFAULT_MIN_SLOW_SPAN_M = 0.05
 # A cube seen and then lost from view may be under the scoop (blind spot):
@@ -99,7 +99,7 @@ DEFAULT_DELIVER_INSERT_M = 0.07
 DEFAULT_FORWARD_SPEED_MPS = 0.31
 DEFAULT_CUBE_AHEAD_M = 0.022
 DEFAULT_ENTRY_SQUARE_TOLERANCE_RAD = 0.10
-DEFAULT_STRAFE_SPEED = 0.40
+DEFAULT_STRAFE_SPEED = 0.28
 # A cube this close (m) after backing up from a delivery was left outside
 # the area: the delivery does not count. TODO measure
 DEFAULT_DROP_VERIFY_DISTANCE_M = 0.30
@@ -137,6 +137,85 @@ DEFAULT_ENTRY_HIDDEN_DISTANCE_M = 0.15
 DEFAULT_DELIVER_EDGE_TIMEOUT_S = 0.3
 DEFAULT_DELIVER_PUSH_MAX_S = 3.0
 DEFAULT_DELIVER_SPEED_MIN_S = 0.3
+# Fleet: ask for the delivery turn this far from the area (m), and without it
+# wait this far away (m), clear of the entry and of the arm. Same values as
+# zone_request_margin_m / zone_wait_margin_m of collector.yaml. TODO measure
+DEFAULT_ZONE_REQUEST_DISTANCE_M = 0.45
+DEFAULT_ZONE_WAIT_DISTANCE_M = 0.30
+# Keep wanting the turn this long (s) after the area was last seen within
+# zone_request_distance_m: one frame reading the legos 48 cm away dropped the
+# wish and fleet_link gave the turn back before the cube went in (5.11.2026).
+DEFAULT_ZONE_WANT_HOLD_S = 3.0
+# Exclusion zone around the area (m): while another robot or Perry holds the
+# turn, stay farther than this from it, also when going for a cube; after a
+# delivery, keep the turn until this far away, or zone_leave_max_s (s) at
+# most. 0 = off. The two collectors collided at the area and bent their
+# scoops (5.11.2026). TODO measure
+DEFAULT_ZONE_EXCLUSION_M = 0.0
+DEFAULT_ZONE_LEAVE_MAX_S = 0.0
+# Cubes to avoid (camera.avoid_colors): drive around one that is closer than
+# foreign_avoid_distance_m (m) and within foreign_clearance_m (m) of the
+# straight path (half the 186 mm chassis, a cube and some margin). Once
+# dodging, keep sliding until it is foreign_exit_margin_m (m) farther out, so
+# the edge does not flip the direction every tick, and slide to the same
+# side for foreign_side_memory_s (s) after the last slide: turning toward a
+# cube behind it puts it in the way again. TODO measure
+DEFAULT_FOREIGN_AVOID_DISTANCE_M = 0.30
+DEFAULT_FOREIGN_CLEARANCE_M = 0.13
+DEFAULT_FOREIGN_EXIT_MARGIN_M = 0.03
+DEFAULT_FOREIGN_SIDE_MEMORY_S = 2.0
+# A slide around a cube to avoid that ends on the line switches to the other
+# side and keeps it foreign_line_side_memory_s (s): the same side slid into
+# the border again and again past a red cube near it (11.2026). After
+# foreign_loop_hits such hits within foreign_loop_window_s (s) the robot
+# also turns away from the border before going on. TODO measure
+DEFAULT_FOREIGN_LINE_SIDE_MEMORY_S = 6.0
+DEFAULT_FOREIGN_LOOP_HITS = 2
+DEFAULT_FOREIGN_LOOP_WINDOW_S = 12.0
+# A cube to avoid seen closer than foreign_memory_distance_m (m) less than
+# foreign_memory_s (s) ago and out of view now may be beside the scoop:
+# back up once (reveal_backup_s) before a catch to see it again; turning
+# toward a yellow one hid a blue one that the push swept in. TODO measure
+DEFAULT_FOREIGN_MEMORY_DISTANCE_M = 0.20
+DEFAULT_FOREIGN_MEMORY_S = 3.0
+# With a cube to avoid within catch_precise_near_m (m) of the target, the
+# catch push starts only with the target within catch_precise_align_rad
+# (rad) of straight ahead: a push a little off centre swept a blue cube in
+# with a yellow one. TODO measure
+DEFAULT_CATCH_PRECISE_NEAR_M = 0.25
+DEFAULT_CATCH_PRECISE_ALIGN_RAD = 0.06
+# A cube to avoid less than this (m) behind the target still blocks the
+# catch: the push overshoots a few cm and the paddle tips stick out past the
+# caught cube. TODO measure
+DEFAULT_FOREIGN_BEHIND_MARGIN_M = 0.07
+# ...when within this (m) of the heading: half the 12.5 cm between the
+# paddles plus half a cube. TODO measure
+DEFAULT_FOREIGN_BEHIND_CLEARANCE_M = 0.065
+# Nearer than this (m) to the target, centre on it by sliding sideways
+# (Mecanum) instead of turning: a turn swings the paddles over the floor
+# beside the scoop. TODO measure
+DEFAULT_STRAFE_ALIGN_DISTANCE_M = 0.25
+
+# --- Fleet link defaults (real values: tools/teleop_web.yaml, section fleet) --
+DEFAULT_FLEET_NAMESPACE = "ferb"
+# A zone/granted older than this counts as not granted.
+DEFAULT_GRANTED_TIMEOUT_S = 2.0
+DEFAULT_REPUBLISH_PERIOD_S = 1.0
+# Overhead pose of the other collector, published by Perry (absolute topic).
+DEFAULT_PEER_POSE_TOPIC = "/phineas/pose"
+
+# --- Peer guard defaults (real values: tools/teleop_web.yaml, section peer) ---
+# The rule agreed with Phineas (docs/external-interface.md, "Peer Avoidance
+# Rules"): a cone ahead, slow then stop, and Ferb yields in a deadlock.
+DEFAULT_PEER_POSE_MAX_AGE_S = 0.5
+DEFAULT_PEER_FRONT_CONE_DEG = 60.0
+DEFAULT_PEER_SLOW_DISTANCE_M = 0.60
+DEFAULT_PEER_STOP_DISTANCE_M = 0.40
+DEFAULT_PEER_DEADLOCK_TIME_S = 3.0
+# Turns in Auto units (a speed in [0, 1], like search_turn_speed), not the
+# rad/s of mobile_base: 0.6 and 0.8 there would spin this robot too fast.
+DEFAULT_PEER_AVOID_TURN_SPEED = 0.25
+DEFAULT_PEER_ESCAPE_TURN_SPEED = 0.30
 
 # --- Vision filter used by this tool (section `detection` overrides) ----------
 # Looser than the ROS cube_detector because this tool's camera is not
@@ -155,6 +234,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 VISION_PACKAGE_DIR = REPO_ROOT / "src" / "vision"
 HSV_CONFIG_PATH = VISION_PACKAGE_DIR / "config" / "hsv_ranges.yaml"
 HSV_NODE_NAME = "cube_detector"
+# Topic names of the fleet bridge come from the mobile_base package, the same
+# way.
+MOBILE_BASE_PACKAGE_DIR = REPO_ROOT / "src" / "mobile_base"
 
 # Key of the parameters of a node inside a ROS parameter file.
 ROS_PARAMS_KEY = "ros__parameters"
@@ -166,6 +248,8 @@ SECTION_SERVER = "server"
 SECTION_LINE_SENSOR = "line_sensor"
 SECTION_AUTO = "auto"
 SECTION_DETECTION = "detection"
+SECTION_FLEET = "fleet"
+SECTION_PEER = "peer"
 
 
 @dataclass(frozen=True)
@@ -232,6 +316,25 @@ class AutoConfig:
     deliver_edge_timeout_s: float = DEFAULT_DELIVER_EDGE_TIMEOUT_S
     deliver_push_max_s: float = DEFAULT_DELIVER_PUSH_MAX_S
     deliver_speed_min_s: float = DEFAULT_DELIVER_SPEED_MIN_S
+    zone_request_distance_m: float = DEFAULT_ZONE_REQUEST_DISTANCE_M
+    zone_wait_distance_m: float = DEFAULT_ZONE_WAIT_DISTANCE_M
+    zone_want_hold_s: float = DEFAULT_ZONE_WANT_HOLD_S
+    zone_exclusion_m: float = DEFAULT_ZONE_EXCLUSION_M
+    zone_leave_max_s: float = DEFAULT_ZONE_LEAVE_MAX_S
+    foreign_avoid_distance_m: float = DEFAULT_FOREIGN_AVOID_DISTANCE_M
+    foreign_clearance_m: float = DEFAULT_FOREIGN_CLEARANCE_M
+    foreign_exit_margin_m: float = DEFAULT_FOREIGN_EXIT_MARGIN_M
+    foreign_side_memory_s: float = DEFAULT_FOREIGN_SIDE_MEMORY_S
+    foreign_line_side_memory_s: float = DEFAULT_FOREIGN_LINE_SIDE_MEMORY_S
+    foreign_loop_hits: int = DEFAULT_FOREIGN_LOOP_HITS
+    foreign_loop_window_s: float = DEFAULT_FOREIGN_LOOP_WINDOW_S
+    foreign_memory_distance_m: float = DEFAULT_FOREIGN_MEMORY_DISTANCE_M
+    foreign_memory_s: float = DEFAULT_FOREIGN_MEMORY_S
+    catch_precise_near_m: float = DEFAULT_CATCH_PRECISE_NEAR_M
+    catch_precise_align_rad: float = DEFAULT_CATCH_PRECISE_ALIGN_RAD
+    foreign_behind_margin_m: float = DEFAULT_FOREIGN_BEHIND_MARGIN_M
+    foreign_behind_clearance_m: float = DEFAULT_FOREIGN_BEHIND_CLEARANCE_M
+    strafe_align_distance_m: float = DEFAULT_STRAFE_ALIGN_DISTANCE_M
 
     @classmethod
     def from_dict(cls, values: dict | None) -> "AutoConfig":
@@ -240,18 +343,73 @@ class AutoConfig:
 
         Missing keys keep their default; unknown keys raise ValueError.
         """
-        values = values or {}
-        defaults = cls()
-        known = {field.name for field in fields(cls)}
-        unknown = sorted(set(values) - known)
-        if unknown:
-            raise ValueError(f"unknown settings in section auto: {unknown}")
-        return cls(
-            **{
-                name: _coerce_like(getattr(defaults, name), value)
-                for name, value in values.items()
-            }
-        )
+        return _from_dict(cls, values, SECTION_AUTO)
+
+
+@dataclass(frozen=True)
+class FleetConfig:
+    """
+    Settings of the link to the fleet; field names are the YAML keys.
+    """
+
+    enabled: bool = False
+    namespace: str = DEFAULT_FLEET_NAMESPACE
+    granted_timeout_s: float = DEFAULT_GRANTED_TIMEOUT_S
+    republish_period_s: float = DEFAULT_REPUBLISH_PERIOD_S
+    peer_pose_topic: str = DEFAULT_PEER_POSE_TOPIC
+
+    @classmethod
+    def from_dict(cls, values: dict | None) -> "FleetConfig":
+        """
+        Build the settings from the YAML `fleet` section.
+
+        Missing keys keep their default; unknown keys raise ValueError.
+        """
+        return _from_dict(cls, values, SECTION_FLEET)
+
+
+@dataclass(frozen=True)
+class PeerConfig:
+    """
+    Settings of the guard against the other collector, from the overhead
+    poses the fleet bridge receives; field names are the YAML keys.
+    """
+
+    enabled: bool = False
+    pose_max_age_s: float = DEFAULT_PEER_POSE_MAX_AGE_S
+    front_cone_deg: float = DEFAULT_PEER_FRONT_CONE_DEG
+    slow_distance_m: float = DEFAULT_PEER_SLOW_DISTANCE_M
+    stop_distance_m: float = DEFAULT_PEER_STOP_DISTANCE_M
+    deadlock_time_s: float = DEFAULT_PEER_DEADLOCK_TIME_S
+    avoid_turn_speed: float = DEFAULT_PEER_AVOID_TURN_SPEED
+    escape_turn_speed: float = DEFAULT_PEER_ESCAPE_TURN_SPEED
+
+    @classmethod
+    def from_dict(cls, values: dict | None) -> "PeerConfig":
+        """
+        Build the settings from the YAML `peer` section.
+
+        Missing keys keep their default; unknown keys raise ValueError.
+        """
+        return _from_dict(cls, values, SECTION_PEER)
+
+
+def _from_dict(cls, values: dict | None, section: str):
+    """
+    Build the settings dataclass `cls` from a YAML section.
+    """
+    values = values or {}
+    defaults = cls()
+    known = {field.name for field in fields(cls)}
+    unknown = sorted(set(values) - known)
+    if unknown:
+        raise ValueError(f"unknown settings in section {section}: {unknown}")
+    return cls(
+        **{
+            name: _coerce_like(getattr(defaults, name), value)
+            for name, value in values.items()
+        }
+    )
 
 
 def _coerce_like(default, value):

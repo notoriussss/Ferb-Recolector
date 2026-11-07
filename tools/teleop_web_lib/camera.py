@@ -54,6 +54,27 @@ class Camera:
             else pipeline.latest_detection(now, timeout_s)
         )
 
+    def foreign_cubes(self, now: float, timeout_s: float) -> list:
+        """
+        The cubes to avoid seen less than `timeout_s` ago, nearest first;
+        empty without detection.
+        """
+        pipeline = self._pipeline
+        return (
+            [] if pipeline is None else pipeline.foreign_cubes(now, timeout_s)
+        )
+
+    def guarded_target_seen(self, now: float, timeout_s: float) -> bool:
+        """
+        True when a cube to go for was skipped less than `timeout_s` ago for
+        a cube to avoid next to it; False without detection.
+        """
+        pipeline = self._pipeline
+        return pipeline is not None and pipeline.guarded_target_seen(
+            now,
+            timeout_s,
+        )
+
     def latest_zone(self, now: float, timeout_s: float):
         """
         The delivery gate seen less than `timeout_s` ago, or None.

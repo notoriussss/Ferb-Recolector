@@ -4,6 +4,7 @@ pytest tools). The autopilot is pure logic, so no thread or hardware is
 involved.
 """
 
+import math
 from pathlib import Path
 
 import pytest
@@ -37,10 +38,18 @@ class StubVision:
 
     def __init__(self):
         self.det = None
+        self.foreign = []
         self.zone = None
+        self.guarded = False
 
     def latest_detection(self, now, timeout_s):
         return self.det
+
+    def foreign_cubes(self, now, timeout_s):
+        return self.foreign
+
+    def guarded_target_seen(self, now, timeout_s):
+        return self.guarded
 
     def latest_zone(self, now, timeout_s):
         return self.zone
@@ -240,7 +249,8 @@ def test_the_area_paper_is_avoided_like_the_gate_when_no_cube_is_in_view():
     vision.zone = Seen("floor", near_m, bearing_rad=0.3)  # to the left
     command = pilot.step(pilot.cfg.reveal_backup_s + 0.1)
     assert pilot.state == "EXPLORE (avoid gate)"
-    assert command.vy == 0.0 and command.wz == -1.0  # turns right, away
+    # Never toward it; the scan was turning left and goes on that way.
+    assert command.vy == 0.0 and command.wz == 1.0
 
 
 def test_the_avoid_turn_keeps_its_side_when_the_bearing_noise_flips_sign():
@@ -264,6 +274,21 @@ def test_after_avoiding_the_area_the_scan_keeps_turning_away_from_it():
     assert pilot.step(0.1).wz == away
 
 
+def test_a_scan_that_meets_the_area_keeps_turning_the_same_way():
+    pilot, vision = make_pilot()
+    pilot.configure(now=0.0, enabled=True, reset=True)  # roam clock at 0
+    pilot.state = "EXPLORE (turn)"
+    pilot._search_dir = 1.0  # scanning left
+    near_m = pilot.cfg.gate_avoid_distance_m - 0.1
+    # Turning left, the area comes in from the left: reversing here kept
+    # the robot sweeping only that sector, never behind it (11.2026).
+    vision.zone = Seen("floor", near_m, bearing_rad=0.3)
+    assert pilot.step(0.0).wz > 0
+    assert pilot.state == "EXPLORE (avoid gate)"
+    vision.zone = None  # the area left the view on the other side
+    assert pilot.step(0.1).wz > 0
+
+
 def test_a_turn_to_align_is_finished_before_driving_again():
     pilot, vision = make_pilot()
     tol_rad = pilot.cfg.align_tolerance_rad
@@ -280,7 +305,6 @@ def test_delivery_squares_up_to_the_pink_line_slides_in_front_then_pushes():
     pilot, vision = make_pilot()
     pilot.carrying = True
     pilot.state = "CARRY"
-    cfg = pilot.cfg
     # Arrived at an angle (the pink line turned to the left): turn left.
     vision.zone = Seen("floor", 0.18, bearing_rad=0.3, entry_angle_rad=0.4)
     command = pilot.step(0.0)
@@ -314,7 +338,12 @@ def test_the_delivery_push_follows_the_edge_then_ends_blind_at_its_speed():
     pilot.step(0.8)
     assert pilot.state == "DROP (blind)"
     speed = (0.18 - (cfg.deliver_blind_edge_m - 0.01)) / 0.7
-    blind_m = cfg.deliver_blind_edge_m - 0.01 + cfg.deliver_insert_m - cfg.cube_ahead_m
+    blind_m = (
+        cfg.deliver_blind_edge_m
+        - 0.01
+        + cfg.deliver_insert_m
+        - cfg.cube_ahead_m
+    )
     end_s = 0.8 + blind_m / speed
     assert pilot.step(end_s - 0.02).vy == 1.0
     assert pilot.step(end_s + 0.02).vy == -1.0
@@ -730,7 +759,9 @@ def test_a_blind_rest_never_goes_past_the_far_edge_last_seen():
     pilot.carrying = True
     pilot.state = "CARRY"
     cfg = pilot.cfg
-    vision.zone = Seen("floor", 0.20, far_distance_m=cfg.deliver_far_stop_m + 0.02)
+    vision.zone = Seen(
+        "floor", 0.20, far_distance_m=cfg.deliver_far_stop_m + 0.02
+    )
     pilot.step(0.0)
     vision.zone = None  # area lost: blind rest
     pilot.step(0.05)
@@ -759,3 +790,700 @@ def test_squaring_up_stays_committed_when_the_paper_jitters_or_drops_out():
     # Still no paper after the hold: back to heading for the area.
     pilot.step(0.25 + cfg.carry_paper_hold_s + 0.1)
     assert pilot.state.startswith("CARRY") and pilot.state != "CARRY (square)"
+
+
+class StubFleet:
+    """
+    Records what Auto tells the fleet; `ok` is whether the turn is granted.
+    """
+
+    def __init__(self, ok=False):
+        self.ok = ok
+        self.busy = False  # another robot or Perry holds the area
+        self.want = False
+        self.sent = []
+        self.delivered_colors = []
+
+    def update(self, state, want, carrying):
+        self.want = want
+        self.sent.append((state, want, carrying))
+
+    def granted(self):
+        return self.ok
+
+    def delivered(self, color):
+        self.delivered_colors.append(color)
+
+    def zone_busy(self):
+        return self.busy
+
+
+def make_fleet_pilot(ok=False):
+    pilot, vision = make_pilot()
+    fleet = StubFleet(ok)
+    pilot.fleet = fleet
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    return pilot, vision, fleet
+
+
+def test_asks_for_the_turn_near_the_area_but_keeps_driving():
+    pilot, vision, fleet = make_fleet_pilot()
+    vision.zone = Seen("floor", 0.40)
+    assert pilot.step(0.0).vy == 1.0
+    assert fleet.want
+    vision.zone = Seen("floor", 0.60)
+    pilot.step(pilot.cfg.zone_want_hold_s + 0.1)
+    assert not fleet.want
+
+
+def test_a_turn_is_kept_when_the_area_distance_flickers():
+    pilot, vision, fleet = make_fleet_pilot(ok=True)
+    vision.zone = Seen("green", 0.14)  # granted, lining up with the legos
+    pilot.step(0.0)
+    assert fleet.want
+    # 5.11.2026: one frame read the legos at 48 cm, the wish dropped and
+    # fleet_link gave the turn back before the cube was delivered.
+    vision.zone = Seen("green", 0.48)
+    pilot.step(0.1)
+    assert fleet.want
+    vision.zone = None
+    pilot.step(0.2)
+    assert fleet.want
+    pilot.step(pilot.cfg.zone_want_hold_s + 0.1)
+    assert not fleet.want  # really gone: let go of it
+
+
+def test_waits_outside_the_area_until_the_turn_is_granted():
+    pilot, vision, fleet = make_fleet_pilot()
+    vision.zone = Seen("floor", 0.28)
+    assert pilot.step(0.0).speed == 0.0
+    assert pilot.state == "CARRY (wait zone)" and fleet.want
+    for step in range(1, 40):
+        assert pilot.step(step * 0.1).speed == 0.0  # never gives up waiting
+    assert pilot.carrying
+    fleet.ok = True
+    pilot.step(4.0)
+    assert pilot.state != "CARRY (wait zone)"
+
+
+def test_keeps_the_turn_through_the_push_and_releases_it_after_backing_up():
+    pilot, vision, fleet = make_fleet_pilot(ok=True)
+    vision.zone = Seen("floor", 0.11)
+    pilot.step(0.0)
+    assert pilot.state == "DROP" and fleet.want
+    vision.zone = None
+    pilot.step(0.05)
+    end_s = blind_push_end_s(pilot.cfg, 0.11, 0.0, 0.05)
+    pilot.step(end_s + 0.1)
+    assert pilot.state == "DROP (back up)" and fleet.want
+    pilot.step(end_s + 0.6)
+    assert pilot.state == "DROP (turn)" and fleet.want
+    pilot.step(end_s + 1.2)
+    assert pilot.state.startswith("EXPLORE") and not fleet.want
+
+
+def with_exclusion(pilot):
+    """
+    The pilot with the area's exclusion zone on (as in teleop_web.yaml).
+    """
+    from dataclasses import replace
+
+    pilot.cfg = replace(pilot.cfg, zone_exclusion_m=0.55, zone_leave_max_s=5.0)
+    return pilot
+
+
+def test_while_another_robot_delivers_the_area_is_kept_clear():
+    pilot, vision, fleet = make_fleet_pilot()
+    with_exclusion(pilot)
+    pilot.carrying = False
+    pilot.state = "SEARCH"
+    vision.zone = Seen("floor", 0.50, bearing_rad=0.2)  # past gate_avoid
+    pilot.step(0.0)
+    assert pilot.state != "EXPLORE (avoid gate)"  # nobody there: roam on
+    fleet.busy = True  # 5.11.2026: the robots collided at the area
+    command = pilot.step(0.1)
+    assert pilot.state == "EXPLORE (avoid gate)" and command.vy == 0.0
+
+
+def test_a_cube_near_the_area_waits_while_another_robot_holds_it():
+    pilot, vision, fleet = make_fleet_pilot()
+    with_exclusion(pilot)
+    pilot.carrying = False
+    pilot.state = "SEARCH"
+    fleet.busy = True
+    vision.zone = Seen("floor", 0.45, bearing_rad=0.0)
+    vision.det = Seen("yellow", 0.40)  # in front of the area
+    command = pilot.step(0.0)
+    assert pilot.state == "EXPLORE (avoid gate)" and command.vy == 0.0
+    fleet.busy = False
+    pilot.step(0.1)
+    assert pilot.state != "EXPLORE (avoid gate)"
+
+
+def test_the_turn_is_given_back_only_once_out_of_the_exclusion():
+    pilot, vision, fleet = make_fleet_pilot(ok=True)
+    with_exclusion(pilot)
+    vision.zone = Seen("floor", 0.11)
+    pilot.step(0.0)
+    vision.zone = None
+    pilot.step(0.05)
+    end_s = blind_push_end_s(pilot.cfg, 0.11, 0.0, 0.05)
+    pilot.step(end_s + 1.2)  # turned around: back to searching
+    assert pilot.state.startswith("EXPLORE") and fleet.want  # still close
+    vision.zone = Seen("floor", 0.40)
+    pilot.step(end_s + 1.5)
+    assert fleet.want  # inside the exclusion
+    vision.zone = Seen("floor", 0.70)
+    pilot.step(end_s + 2.0)
+    assert not fleet.want  # out: the next robot may come in
+
+
+def test_the_turn_is_given_back_at_the_latest_after_zone_leave_max_s():
+    pilot, vision, fleet = make_fleet_pilot(ok=True)
+    with_exclusion(pilot)
+    vision.zone = Seen("floor", 0.11)
+    pilot.step(0.0)
+    vision.zone = None
+    pilot.step(0.05)
+    end_s = blind_push_end_s(pilot.cfg, 0.11, 0.0, 0.05)
+    pilot.step(end_s + 1.2)
+    assert fleet.want
+    pilot.step(end_s + 1.2 + pilot.cfg.zone_leave_max_s + 0.1)
+    assert not fleet.want
+
+
+def test_reports_the_delivered_cube_colour_to_the_fleet():
+    pilot, vision, fleet = make_fleet_pilot(ok=True)
+    pilot.carrying = False
+    pilot.state = "SEARCH"
+    vision.det = Seen("yellow", pilot.cfg.stop_distance_m - 0.01)
+    pilot.step(0.0)
+    vision.det = None
+    pilot.step(1.0)
+    vision.zone = Seen("floor", 0.11)
+    pilot.step(1.1)
+    vision.zone = None
+    pilot.step(1.15)
+    end_s = blind_push_end_s(pilot.cfg, 0.11, 1.1, 1.15)
+    pilot.step(end_s + 0.1)
+    assert fleet.delivered_colors == []  # not before the back up checks it
+    pilot.step(end_s + 0.1 + pilot.cfg.floor_deliver_backup_s)
+    assert pilot.state == "DROP (turn)"
+    assert fleet.delivered_colors == ["yellow"]
+    pilot.step(end_s + 0.2 + pilot.cfg.floor_deliver_backup_s)
+    assert fleet.delivered_colors == ["yellow"]  # only once
+
+
+def test_a_cube_left_outside_is_not_reported_as_delivered():
+    pilot, vision, fleet = make_fleet_pilot(ok=True)
+    cfg = pilot.cfg
+    pilot._cube_color = "yellow"
+    vision.zone = Seen("floor", 0.11)
+    pilot.step(0.0)
+    vision.zone = None
+    pilot.step(0.05)
+    end_s = blind_push_end_s(cfg, 0.11, 0.0, 0.05)
+    pilot.step(end_s + 0.1)  # backing up
+    vision.det = Seen("yellow", cfg.drop_verify_distance_m - 0.05)
+    pilot.step(end_s + 0.1 + cfg.floor_deliver_backup_s)
+    assert pilot.delivered_count == 0
+    assert fleet.delivered_colors == [] and not fleet.want
+
+
+def test_a_line_hit_during_the_push_still_reports_the_delivery():
+    pilot, vision, fleet = make_fleet_pilot(ok=True)
+    pilot._cube_color = "yellow"
+    vision.zone = Seen("floor", 0.18)
+    pilot.step(0.0)
+    assert pilot.state == "DROP"
+    pilot.step(0.2, line_black=True)
+    assert fleet.delivered_colors == ["yellow"]
+
+
+def waiting_by_the_legos(pilot, vision):
+    """
+    Carrying, waiting for the turn in front of the legos (not the paper).
+    """
+    vision.zone = Seen("green", 0.25, bearing_rad=0.1)
+    assert pilot.step(0.0).speed == 0.0
+    assert pilot.state == "CARRY (wait zone)"
+
+
+def test_waiting_stays_put_when_the_landmarks_flicker_out():
+    pilot, vision, fleet = make_fleet_pilot()
+    waiting_by_the_legos(pilot, vision)
+    # 5.11.2026: losing the legos sent the robot turning to look for them,
+    # and it hit the line and left the cube behind (17:51:27).
+    vision.zone = None
+    for step in range(1, 30):
+        assert pilot.step(step * 0.1).speed == 0.0
+        assert pilot.state == "CARRY (wait zone)" and fleet.want
+
+
+def test_waiting_does_not_creep_on_when_the_area_reads_farther():
+    pilot, vision, fleet = make_fleet_pilot()
+    waiting_by_the_legos(pilot, vision)
+    # One frame read the legos far away: the robot drove on toward the area
+    # without the turn (17:50:23).
+    vision.zone = Seen("green", 0.90, bearing_rad=0.1)
+    assert pilot.step(0.1).speed == 0.0
+    assert pilot.state == "CARRY (wait zone)" and fleet.want
+
+
+def test_a_granted_turn_ends_the_wait_even_without_the_area_in_view():
+    pilot, vision, fleet = make_fleet_pilot()
+    waiting_by_the_legos(pilot, vision)
+    vision.zone = None
+    pilot.step(0.1)
+    fleet.ok = True
+    command = pilot.step(0.2)
+    assert pilot.state != "CARRY (wait zone)"
+    assert command.speed > 0 and command.wz > 0  # toward where it was (left)
+
+
+def test_waiting_gives_up_once_the_area_is_gone_for_good():
+    pilot, vision, fleet = make_fleet_pilot()
+    waiting_by_the_legos(pilot, vision)
+    vision.zone = None
+    pilot.step(pilot.cfg.carry_zone_timeout_s + 0.5)
+    assert pilot.state != "CARRY (wait zone)"
+
+
+def test_waiting_for_the_turn_never_slides_when_the_paper_flickers_out():
+    pilot, vision, fleet = make_fleet_pilot()
+    cfg = pilot.cfg
+    vision.zone = Seen("floor", 0.28, bearing_rad=0.3)
+    pilot.step(0.0)
+    assert pilot.state == "CARRY (wait zone)"
+    vision.zone = None
+    for step in range(1, 200):
+        command = pilot.step(step * 0.1)
+        if step * 0.1 < cfg.carry_zone_timeout_s:
+            assert command.speed == 0.0
+            assert pilot.state == "CARRY (wait zone)"
+    assert not pilot.carrying  # long enough: the cube is taken as lost
+
+
+def test_pausing_during_the_delivery_gives_the_turn_back():
+    pilot, vision, fleet = make_fleet_pilot(ok=True)
+    vision.zone = Seen("floor", 0.11)
+    pilot.step(0.0)
+    assert pilot.state == "DROP" and fleet.want
+    pilot.mark_paused()
+    assert not fleet.want
+    assert fleet.sent[-1] == ("PAUSED", False, True)
+
+
+def test_driving_by_hand_near_the_area_does_not_keep_asking_for_the_turn():
+    pilot, vision, fleet = make_fleet_pilot()
+    vision.zone = Seen("floor", 0.40)
+    pilot.step(0.0)
+    assert fleet.want
+    pilot.mark_manual()
+    assert not fleet.want
+    assert fleet.sent[-1][0] == "MANUAL"
+
+
+def test_without_a_fleet_it_never_waits():
+    pilot, vision = make_pilot()
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    vision.zone = Seen("floor", 0.28)
+    pilot.step(0.0)
+    assert pilot.state != "CARRY (wait zone)"
+
+
+def test_fleet_state_names_match_what_fleet_link_reads():
+    from teleop_web_lib.fleet import behavior_state_name
+
+    assert behavior_state_name("CARRY (align)") == "CARRY"
+    assert behavior_state_name("CARRY (wait zone)") == "WAIT_ZONE"
+    assert behavior_state_name("DROP (blind)") == "DELIVER"
+    assert behavior_state_name("EXPLORE (turn)") == "SEARCH"
+    assert behavior_state_name("LINE (stop)") == "PAUSED"
+
+
+def test_fleet_settings_reject_unknown_keys():
+    from teleop_web_lib.config import FleetConfig
+
+    assert not FleetConfig.from_dict(None).enabled
+    with pytest.raises(ValueError):
+        FleetConfig.from_dict({"enable": True})
+
+
+def test_a_foreign_cube_in_the_way_is_slid_around_while_carrying():
+    pilot, vision = make_pilot()
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    vision.zone = Seen("green", 0.60)  # straight ahead: would drive on
+    vision.foreign = [Seen("blue", 0.25, bearing_rad=0.1)]  # a bit to the left
+    command = pilot.step(0.0)
+    assert command.vx > 0 and command.vy == 0 and command.speed > 0  # right
+    assert pilot.carrying and pilot.state.startswith("CARRY")
+    assert "avoiding blue" in pilot.target_info
+
+
+def drive(pilot, now, line_black=False):
+    """
+    One control step as the drive thread does it: decide, then note the
+    motion (the line escape undoes the last one).
+    """
+    command = pilot.step(now, line_black)
+    pilot.note_motion(now, command)
+    return command
+
+
+def recover_from_line(pilot, now):
+    """
+    Hit the line at `now` and step until the line recovery is over; the
+    commands of the recovery and the time it ended.
+    """
+    commands = [drive(pilot, now, line_black=True)]
+    while pilot.state.startswith("LINE") and now < 20.0:
+        now += 0.05
+        commands.append(drive(pilot, now))
+    return commands, now
+
+
+def carrying_with_red_in_the_way():
+    """
+    Carrying toward the area with a red cube a bit to the left in the way:
+    the slide goes right (11.2026, the border was on that side).
+    """
+    pilot, vision = make_pilot()
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    vision.zone = Seen("green", 0.60)
+    vision.foreign = [Seen("red", 0.18, bearing_rad=0.1)]
+    return pilot, vision
+
+
+def test_a_slide_that_hits_the_line_goes_the_other_way_next_time():
+    pilot, vision = carrying_with_red_in_the_way()
+    assert drive(pilot, 0.0).vx > 0  # slides right, toward the border
+    _, now = recover_from_line(pilot, 0.1)
+    assert pilot.carrying  # a sideways hit keeps the cube
+    command = drive(pilot, now + 0.05)
+    assert command.vx < 0 and command.vy == 0  # now left, away from it
+    # The new side is kept past the usual memory (the line is still there).
+    later = now + pilot.cfg.foreign_side_memory_s + 0.5
+    assert drive(pilot, later).vx < 0
+
+
+def test_sliding_into_the_line_twice_turns_away_from_the_border():
+    pilot, vision = carrying_with_red_in_the_way()
+    drive(pilot, 0.0)  # slides right
+    commands, now = recover_from_line(pilot, 0.1)
+    assert all(c.wz == 0 for c in commands)  # first time: no turn
+    assert drive(pilot, now + 0.05).vx < 0  # slides left
+    commands, now = recover_from_line(pilot, now + 0.1)
+    turns = [c.wz for c in commands if c.wz]
+    assert turns and all(wz < 0 for wz in turns)  # line left: turn right
+
+
+def test_a_foreign_cube_off_the_path_or_far_is_ignored():
+    pilot, vision = make_pilot()
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    vision.zone = Seen("green", 0.60)
+    vision.foreign = [Seen("blue", 0.25, bearing_rad=0.8)]  # far to the side
+    assert pilot.step(0.0).vy == 1.0
+    vision.foreign = [Seen("blue", 0.60, bearing_rad=0.0)]  # still far ahead
+    assert pilot.step(0.1).vy == 1.0
+
+
+def test_the_slide_around_a_foreign_cube_keeps_its_side_until_clear():
+    pilot, vision = make_pilot()
+    cfg = pilot.cfg
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    vision.zone = Seen("green", 0.60)
+    vision.foreign = [Seen("blue", 0.25, bearing_rad=-0.1)]  # to the right
+    assert pilot.step(0.0).vx < 0  # slides left
+    # Just past the clearance but inside the exit margin: same side.
+    lateral_m = cfg.foreign_clearance_m + cfg.foreign_exit_margin_m / 2
+    vision.foreign = [Seen("blue", 0.25, -math.asin(lateral_m / 0.25))]
+    assert pilot.step(0.1).vx < 0
+    vision.foreign = [Seen("blue", 0.25, bearing_rad=-1.2)]  # clear: drive on
+    assert pilot.step(0.2).vy == 1.0
+
+
+def test_a_foreign_cube_is_also_avoided_when_searching_for_ours():
+    pilot, vision = make_pilot()
+    vision.det = Seen("yellow", 0.40)  # ahead: approach drives straight
+    vision.foreign = [Seen("blue", 0.22, bearing_rad=-0.05)]
+    command = pilot.step(0.0)
+    assert command.vx < 0 and command.vy == 0
+
+
+def test_the_blind_catch_push_is_not_interrupted_by_a_foreign_cube():
+    pilot, vision = make_pilot()
+    vision.det = Seen("yellow", pilot.cfg.stop_distance_m - 0.01)
+    assert pilot.step(0.0).vy == 1.0 and pilot.state == "CATCH"
+    vision.foreign = [Seen("blue", 0.15, bearing_rad=0.05)]
+    assert pilot.step(0.1).vy == 1.0 and pilot.state == "CATCH"
+
+
+def test_catch_does_not_start_with_a_foreign_cube_in_the_way():
+    pilot, vision = make_pilot()
+    vision.det = Seen("yellow", pilot.cfg.stop_distance_m - 0.01)
+    vision.foreign = [Seen("blue", 0.11, bearing_rad=0.05)]
+    command = pilot.step(0.0)
+    assert command.vx > 0 and command.vy == 0 and pilot.state == "APPROACH"
+
+
+def test_drop_does_not_start_with_a_foreign_cube_in_front_of_the_zone():
+    pilot, vision = make_pilot()
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    vision.zone = Seen("floor", 0.18, bearing_rad=0.0, entry_angle_rad=0.0)
+    vision.foreign = [Seen("blue", 0.15, bearing_rad=0.05)]
+    command = pilot.step(0.0)
+    assert command.vx > 0 and command.vy == 0
+    assert pilot.state.startswith("CARRY")
+    # Slid right past the foreign cube: push straight in without sliding back
+    # left toward the area's centre (which is behind the foreign cube).
+    vision.zone = Seen("floor", 0.18, bearing_rad=0.28, entry_angle_rad=0.0)
+    vision.foreign = [Seen("blue", 0.22, bearing_rad=1.2)]
+    assert pilot.step(0.1).vy == 1.0 and pilot.state == "DROP"
+
+
+def test_without_foreign_cubes_nothing_changes():
+    pilot, vision = make_pilot()
+    vision.zone = Seen("green", 0.60)
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    assert pilot.step(0.0).vy == 1.0
+
+
+def test_the_side_of_the_slide_is_kept_across_the_turn_toward_the_cube():
+    pilot, vision = make_pilot()
+    cfg = pilot.cfg
+    vision.det = Seen("yellow", 0.40)
+    vision.foreign = [Seen("blue", 0.22, bearing_rad=-0.05)]  # to the right
+    assert pilot.step(0.0).vx < 0  # slides left
+    # Slid off: our cube is now to the right, the robot turns to face it.
+    vision.det = Seen("yellow", 0.40, bearing_rad=-0.4)
+    vision.foreign = [Seen("blue", 0.22, bearing_rad=-0.6)]
+    assert pilot.step(0.1).wz != 0
+    # Facing it, the blue cube is a bit to the left now: still slide left
+    # (away from it would be right, back where the robot came from).
+    vision.det = Seen("yellow", 0.40)
+    vision.foreign = [Seen("blue", 0.22, bearing_rad=0.05)]
+    assert pilot.step(0.2).vx < 0
+    # Long after the last slide the side is chosen again.
+    vision.foreign = []
+    pilot.step(0.3)
+    vision.foreign = [Seen("blue", 0.22, bearing_rad=0.05)]
+    assert pilot.step(0.3 + cfg.foreign_side_memory_s + 0.1).vx > 0
+
+
+def test_a_cube_to_avoid_behind_the_target_does_not_stop_the_approach():
+    pilot, vision = make_pilot()
+    vision.det = Seen("yellow", 0.20)
+    vision.foreign = [Seen("red", 0.28)]  # past the cube we catch
+    command = pilot.step(0.0)
+    assert command.vx == 0 and command.vy > 0
+
+
+def test_the_slide_does_not_go_into_a_second_cube_to_avoid():
+    pilot, vision = make_pilot()
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    vision.zone = Seen("green", 0.60)
+    # Slightly left (away from it is right), but a red one waits right.
+    vision.foreign = [
+        Seen("blue", 0.20, bearing_rad=0.15),
+        Seen("red", 0.27, bearing_rad=-0.65),
+    ]
+    assert pilot.step(0.0).vx < 0  # slides left
+
+
+def test_cubes_to_avoid_are_never_the_target():
+    from teleop_web_lib.detection import split_cubes
+
+    blue_near = Seen("blue", 0.2, bearing_rad=0.5)
+    yellow = Seen("yellow", 0.4)
+    red_far = Seen("red", 0.5, bearing_rad=-0.5)
+    avoid = frozenset({"blue", "red"})
+    # Nearest first: the blue one is closer but is not what we go for.
+    assert split_cubes([blue_near, yellow, red_far], avoid) == (
+        yellow,
+        [blue_near, red_far],
+    )
+    assert split_cubes([yellow], avoid) == (yellow, [])
+    assert split_cubes([red_far], avoid) == (None, [red_far])
+    assert split_cubes([], avoid) == (None, [])
+
+
+def test_a_target_next_to_a_cube_to_avoid_is_skipped():
+    from teleop_web_lib.detection import split_cubes
+
+    guarded = Seen("yellow", 0.3)
+    blue = Seen("blue", 0.35)  # 5 cm behind it: catching would push both
+    free = Seen("yellow", 0.5, bearing_rad=0.6)
+    avoid = frozenset({"blue"})
+    assert split_cubes([guarded, blue, free], avoid, 0.12) == (free, [blue])
+    assert split_cubes([guarded, blue], avoid, 0.12) == (None, [blue])
+
+
+def test_a_cube_to_avoid_that_left_the_view_is_looked_for_before_a_catch():
+    pilot, vision = make_pilot()
+    cfg = pilot.cfg
+    # A blue cube close by, then the robot turns to a yellow one and loses
+    # it: it may be beside the scoop, so back up once before pushing.
+    vision.det = Seen("yellow", 0.40, bearing_rad=0.5)
+    vision.foreign = [Seen("blue", 0.13, bearing_rad=0.2)]
+    pilot.step(0.0)
+    vision.foreign = []
+    vision.det = Seen("yellow", cfg.stop_distance_m - 0.01)
+    assert pilot.step(0.5).vy == -1.0 and pilot.state == "APPROACH (back up)"
+    assert pilot.step(0.5 + cfg.reveal_backup_s / 2).vy == -1.0
+    # Backed up and still nothing in view: the catch goes ahead.
+    assert pilot.step(0.6 + cfg.reveal_backup_s).vy == 1.0
+    assert pilot.state == "CATCH"
+
+
+def test_without_a_close_cube_to_avoid_the_catch_starts_at_once():
+    pilot, vision = make_pilot()
+    vision.foreign = [Seen("blue", 0.6, bearing_rad=0.5)]  # far: no worry
+    pilot.step(0.0)
+    vision.foreign = []
+    vision.det = Seen("yellow", pilot.cfg.stop_distance_m - 0.01)
+    assert pilot.step(0.5).vy == 1.0 and pilot.state == "CATCH"
+
+
+def test_a_cube_to_avoid_away_from_the_slide_does_not_widen_the_centring():
+    pilot, vision = make_pilot()
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    # The area's centre is a bit to the left; a blue cube far to the left,
+    # beyond the band the robot slides through, must not stop the centring.
+    vision.zone = Seen("floor", 0.18, bearing_rad=0.25, entry_angle_rad=0.0)
+    vision.foreign = [Seen("blue", 0.28, bearing_rad=1.2)]
+    command = pilot.step(0.0)
+    assert command.vx < 0 and pilot.state == "CARRY (center)"  # slides left
+
+
+def test_a_cube_to_avoid_seen_a_moment_ago_still_guards_the_target():
+    from teleop_web_lib.detection import split_cubes
+
+    yellow = Seen("yellow", 0.31)
+    red = Seen("red", 0.36)  # 5 cm behind it, missing from this frame
+    avoid = frozenset({"red"})
+    assert split_cubes([yellow], avoid, 0.12) == (yellow, [])
+    assert split_cubes([yellow], avoid, 0.12, [red]) == (None, [])
+
+
+def test_a_target_that_turned_guarded_is_not_crept_toward():
+    pilot, vision = make_pilot()
+    vision.det = Seen("yellow", 0.40)  # straight ahead
+    pilot.step(0.0)
+    # Gone: a red cube now shows next to it. No wait, no creeping forward.
+    vision.det = None
+    vision.guarded = True
+    pilot.step(0.1)
+    vision.guarded = False  # the red cube flickers out again
+    command = pilot.step(pilot.cfg.lost_timeout_s + 0.1)
+    assert pilot.state != "EXPLORE (reacquire)"
+    assert not (command.vy > 0 and command.wz == 0 and command.vx == 0)
+
+
+def test_a_target_lost_from_view_is_still_crept_toward():
+    pilot, vision = make_pilot()
+    vision.det = Seen("yellow", 0.40)
+    pilot.step(0.0)
+    vision.det = None
+    pilot.step(0.1)  # waits a moment first
+    pilot.step(pilot.cfg.lost_timeout_s + 0.1)
+    assert pilot.state == "EXPLORE (reacquire)"
+
+
+def test_with_a_cube_to_avoid_next_to_it_the_catch_lines_up_first():
+    pilot, vision = make_pilot()
+    cfg = pilot.cfg
+    near_m = cfg.stop_distance_m - 0.01
+    bearing_rad = cfg.catch_precise_align_rad * 1.5  # good enough alone
+    vision.det = Seen("yellow", near_m, bearing_rad=bearing_rad)
+    # A blue cube 13 cm to its side: slide the last bit before pushing (a
+    # turn would swing the paddles toward it).
+    vision.foreign = [Seen("blue", 0.20, bearing_rad=-0.6)]
+    command = pilot.step(0.0)
+    assert pilot.state == "APPROACH (slide)"
+    assert command.vx < 0 and command.wz == 0  # left, toward the cube
+    vision.det = Seen("yellow", near_m, bearing_rad=0.0)
+    assert pilot.step(0.1).vy == 1.0 and pilot.state == "CATCH"
+
+
+def test_without_a_cube_to_avoid_near_the_catch_keeps_its_tolerance():
+    pilot, vision = make_pilot()
+    cfg = pilot.cfg
+    bearing_rad = cfg.catch_precise_align_rad * 1.5
+    vision.det = Seen("yellow", cfg.stop_distance_m - 0.01, bearing_rad)
+    vision.foreign = [Seen("blue", 0.60, bearing_rad=-0.6)]  # far away
+    assert pilot.step(0.0).vy == 1.0 and pilot.state == "CATCH"
+
+
+def test_close_to_a_cube_off_centre_the_robot_slides_instead_of_turning():
+    pilot, vision = make_pilot()
+    vision.det = Seen("yellow", 0.20, bearing_rad=-0.4)
+    command = pilot.step(0.0)
+    assert pilot.state == "APPROACH (slide)"
+    assert command.vx > 0 and command.wz == 0 and command.vy == 0  # right
+
+
+def test_far_from_a_cube_off_centre_the_robot_still_turns():
+    pilot, vision = make_pilot()
+    vision.det = Seen("yellow", 0.60, bearing_rad=-0.4)
+    command = pilot.step(0.0)
+    assert pilot.state == "ALIGN" and command.wz < 0
+
+
+def test_a_cube_to_avoid_just_behind_the_target_blocks_the_catch():
+    pilot, vision = make_pilot()
+    near_m = pilot.cfg.stop_distance_m - 0.01
+    vision.det = Seen("yellow", near_m)
+    # 4 cm behind the yellow one: the push would reach it.
+    vision.foreign = [Seen("red", near_m + 0.04)]
+    command = pilot.step(0.0)
+    assert pilot.state != "CATCH" and command.vy == 0 and command.vx != 0
+
+
+def test_a_cube_to_avoid_well_behind_the_target_lets_the_catch_start():
+    pilot, vision = make_pilot()
+    near_m = pilot.cfg.stop_distance_m - 0.01
+    vision.det = Seen("yellow", near_m)
+    vision.foreign = [Seen("red", near_m + 0.10)]
+    assert pilot.step(0.0).vy > 0 and pilot.state == "CATCH"
+
+
+def test_the_slide_around_a_cube_to_avoid_then_goes_for_the_target():
+    pilot, vision = make_pilot()
+    vision.det = Seen("yellow", 0.30)
+    vision.foreign = [Seen("blue", 0.22, bearing_rad=0.05)]  # in the way
+    command = pilot.step(0.0)
+    assert command.vx != 0 and command.vy == 0  # slides around it
+    vision.foreign = [Seen("blue", 0.25, bearing_rad=0.7)]  # out of the way
+    assert pilot.step(0.1).vy > 0 and pilot.state == "APPROACH"
+
+
+def test_a_line_hit_sliding_sideways_while_carrying_keeps_the_cube():
+    pilot, vision = make_pilot()
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    pilot.note_motion(0.0, DriveCommand(-1.0, 0.0, 0.0, 0.28))  # slide left
+    command = pilot.step(0.1, line_black=True)
+    assert pilot.state == "LINE (stop)" and pilot.carrying
+    pilot.step(0.1 + pilot.cfg.line_stop_s + 0.01, line_black=False)
+    assert pilot.state == "LINE (back up)"
+    assert command == DriveCommand() or command.vy == 0
+
+
+def test_a_line_hit_driving_forward_while_carrying_drops_the_cube():
+    pilot, vision = make_pilot()
+    pilot.carrying = True
+    pilot.state = "CARRY"
+    pilot.note_motion(0.0, DriveCommand(0.0, 1.0, 0.0, 0.36))
+    pilot.step(0.1, line_black=True)
+    assert not pilot.carrying
